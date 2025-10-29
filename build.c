@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
         "sh", "-lc",
         "cc -std=c99 -Wall -Wextra "
         "$(pkg-config --cflags raylib) "
-        "src/main.c src/components/*.c "
+        "src/main.c src/modules/*.c "
         "-o build/game "
         "$(pkg-config --libs raylib) "
         "-lm"

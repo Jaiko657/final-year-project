@@ -1,10 +1,11 @@
 #include "raylib.h"
-#include "components/ecs.h"
-#include "components/input.h"
-#include "components/logger.h"
-#include "components/logger_raylib_adapter.h"
+#include "modules/ecs.h"
+#include "modules/input.h"
+#include "modules/logger.h"
+#include "modules/logger_raylib_adapter.h"
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>  // for qsort
 
 /*
  * TODO:
@@ -30,6 +31,10 @@
 }while(0)
 
 static Texture2D tex_player, tex_player_hat, tex_coin, tex_npc;
+typedef struct {
+    ecs_sprite_view_t v;
+    float key;
+} Item;
 
 void init(int width, int height)
 {
@@ -91,12 +96,33 @@ int init_entities(int W, int H)
     return 0;
 }
 
+static int cmp_item(const void *a, const void *b)
+{
+    float ka = ((const Item*)a)->key;
+    float kb = ((const Item*)b)->key;
+    if (ka < kb) return -1;
+    if (ka > kb) return 1;
+    return 0;
+}
+
 void render(void)
 {
+    // TODO: Replace painters algorithm with a bake step (ordering, culling etc maybe)
+    Item items[ECS_MAX_ENTITIES];
+    int count = 0;
+
     for (ecs_sprite_iter_t it = ecs_sprites_begin(); ; ) {
         ecs_sprite_view_t v;
         if (!ecs_sprites_next(&it, &v)) break;
 
+        float bottomY = (v.y - v.ox) + v.src.height; // adjust origin if needed
+        items[count++] = (Item){ .v = v, .key = bottomY };
+    }
+
+    qsort(items, count, sizeof(Item), cmp_item);
+
+    for (int i = 0; i < count; ++i) {
+        ecs_sprite_view_t v = items[i].v;
         DrawTexturePro(
             v.tex,
             v.src,
@@ -106,6 +132,7 @@ void render(void)
             WHITE
         );
     }
+
   // Vendor Hints
     {
         int vx, vy; const char* msg = NULL;
