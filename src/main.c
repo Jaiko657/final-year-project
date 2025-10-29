@@ -34,6 +34,7 @@ int main(void)
     TRY_TEX(tex_coin,       "assets/coin.png");
     TRY_TEX(tex_npc,        "assets/npc.png");
 
+    //TODO: UGLY TMP THING, assset manager and renderer decisions need made to avoid this
     ecs_set_hat_texture(tex_player_hat);
 
     // Player

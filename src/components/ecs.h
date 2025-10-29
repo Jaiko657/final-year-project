@@ -6,7 +6,11 @@
 
 // ====== Public constants / types ======
 #define ECS_MAX_ENTITIES 1024
-typedef int32_t ecs_entity_t;
+typedef struct {
+    uint32_t idx;
+    uint32_t gen;     // generation (0 == dead)
+} ecs_entity_t;
+static inline ecs_entity_t ecs_null(void){ return (ecs_entity_t){UINT32_MAX,0}; }
 
 typedef enum { ITEM_COIN = 1, ITEM_HAT = 2 } item_kind_t;
 

@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 
 /*
  * TODO:
@@ -39,7 +40,8 @@ typedef struct { item_kind_t sells; int price; } cmp_vendor_t;
 
 // =============== ECS Storage =============
 static uint32_t        ecs_mask[ECS_MAX_ENTITIES];
-static bool            ecs_alive[ECS_MAX_ENTITIES];
+static uint32_t        ecs_gen[ECS_MAX_ENTITIES];       // 0 is dead; >0 is live generation
+static uint32_t        ecs_next_gen[ECS_MAX_ENTITIES];  // next generation to use when resurrecting
 static cmp_position_t  cmp_pos[ECS_MAX_ENTITIES];
 static cmp_velocity_t  cmp_vel[ECS_MAX_ENTITIES];
 static cmp_sprite_t    cmp_spr[ECS_MAX_ENTITIES];
@@ -47,6 +49,10 @@ static cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
 static cmp_item_t      cmp_item[ECS_MAX_ENTITIES];
 static cmp_inventory_t cmp_inv[ECS_MAX_ENTITIES];
 static cmp_vendor_t    cmp_vendor[ECS_MAX_ENTITIES];
+
+// ========== O(1) create/delete ==========
+static int      free_stack[ECS_MAX_ENTITIES];
+static int      free_top = 0;
 
 // Config
 static int g_worldW = 800, g_worldH = 450;
@@ -66,25 +72,39 @@ static void ui_toast(float secs, const char* fmt, ...)
 
 // =============== Events ===================
 typedef enum { EV_PICKUP, EV_TRY_BUY } ev_type_t;
-typedef struct { ev_type_t type; int a, b; } ev_t;
+typedef struct { ev_type_t type; ecs_entity_t a, b; } ev_t;
 
 #define EV_MAX 128
 static ev_t ev_queue[EV_MAX];
 static int  ev_count = 0;
 
-static void ev_emit(ev_t e)
-{
+static void ev_emit(ev_t e){
     if (ev_count < EV_MAX) {
         ev_queue[ev_count++] = e;
-        TraceLog(LOG_INFO, "Emit event:\t type=%d source=%d target=%d", e.type, e.a, e.b);
+        TraceLog(LOG_INFO, "Emit event:\t type=%d a=(%u,%u) b=(%u,%u)",
+                 e.type, e.a.idx, e.a.gen, e.b.idx, e.b.gen);
     }
 }
 
 // =============== Helpers ==================
-static int find_player(void){
-    for(int e=0;e<ECS_MAX_ENTITIES;++e)
-        if(ecs_alive[e] && (ecs_mask[e]&TAG_PLAYER)) return e;
-    return -1;
+static inline int ent_index_checked(ecs_entity_t e) {
+    return (e.idx < ECS_MAX_ENTITIES && ecs_gen[e.idx] == e.gen && e.gen != 0)
+        ? (int)e.idx : -1;
+}
+// Fast unchecked index when you already validated
+static inline int ent_index_unchecked(ecs_entity_t e){ return (int)e.idx; }
+
+static inline bool ecs_alive_idx(int i){ return ecs_gen[i] != 0; }
+static inline bool ecs_alive_handle(ecs_entity_t e){ return ent_index_checked(e) >= 0; }
+static inline ecs_entity_t handle_from_index(int i){ return (ecs_entity_t){ (uint32_t)i, ecs_gen[i] }; }
+
+static ecs_entity_t find_player_handle(void){
+    for(int i=0;i<ECS_MAX_ENTITIES;++i){
+        if(ecs_alive_idx(i) && (ecs_mask[i]&TAG_PLAYER)) {
+            return (ecs_entity_t){ (uint32_t)i, ecs_gen[i] };
+        }
+    }
+    return ecs_null();
 }
 
 static float clampf(float v, float a, float b){ return (v<a)?a:((v>b)?b:v); }
@@ -103,8 +123,15 @@ static bool col_overlap_padded(int a, int b, float pad){
 
 // =============== Public: lifecycle ========
 void ecs_init(void){
-    memset(ecs_alive, 0, sizeof(ecs_alive));
-    memset(ecs_mask,  0, sizeof(ecs_mask));
+    memset(ecs_mask, 0, sizeof(ecs_mask));
+    memset(ecs_gen,  0, sizeof(ecs_gen));
+    memset(ecs_next_gen, 0, sizeof(ecs_next_gen));
+    // Build free-list: all slots free
+    free_top = 0;
+    for (int i = ECS_MAX_ENTITIES - 1; i >= 0; --i) { // push in reverse for cachey low indices first
+        free_stack[free_top++] = i;
+    }
+
     ev_count = 0;
     ui_toast_timer = 0.0f;
     ui_toast_text[0] = '\0';
@@ -116,40 +143,90 @@ void ecs_set_hat_texture(Texture2D tex){ g_hatTexture = tex; }
 // =============== Public: entity ===========
 ecs_entity_t ecs_create(void)
 {
-    for (int i=0;i<ECS_MAX_ENTITIES;++i){
-        if (!ecs_alive[i]) { ecs_alive[i]=true; ecs_mask[i]=0; return i; }
-    }
-    return -1;
+    if (free_top == 0) return ecs_null();
+    int idx = free_stack[--free_top];
+    uint32_t g = ecs_next_gen[idx];
+    if (g == 0) g = 1;                    // first time ever
+    ecs_gen[idx] = g;                     // alive with current generation
+    ecs_mask[idx] = 0;
+    return (ecs_entity_t){ (uint32_t)idx, g };
 }
+
 void ecs_destroy(ecs_entity_t e)
 {
-    if (e>=0 && e<ECS_MAX_ENTITIES) { ecs_alive[e]=false; ecs_mask[e]=0; }
+    int idx = ent_index_checked(e);
+    if (idx < 0) return;
+    uint32_t g = ecs_gen[idx];
+    g = (g + 1) ? (g + 1) : 1;            // bump; avoid 0
+    ecs_gen[idx] = 0;                     // dead
+    ecs_next_gen[idx] = g;                // remember next live generation
+    ecs_mask[idx] = 0;
+    free_stack[free_top++] = idx;
 }
 
 // =============== Public: adders ===========
 void cmp_add_position(ecs_entity_t e, float x, float y)
-{ cmp_pos[e]=(cmp_position_t){x,y}; ecs_mask[e]|=CMP_POS; }
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    cmp_pos[i] = (cmp_position_t){ x, y };
+    ecs_mask[i] |= CMP_POS;
+}
 
 void cmp_add_velocity(ecs_entity_t e, float x, float y)
-{ cmp_vel[e]=(cmp_velocity_t){x,y}; ecs_mask[e]|=CMP_VEL; }
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    cmp_vel[i] = (cmp_velocity_t){ x, y };
+    ecs_mask[i] |= CMP_VEL;
+}
 
 void cmp_add_sprite(ecs_entity_t e, Texture2D t, Rectangle src, float ox, float oy)
-{ cmp_spr[e]=(cmp_sprite_t){t,src,ox,oy}; ecs_mask[e]|=CMP_SPR; }
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    cmp_spr[i] = (cmp_sprite_t){ t, src, ox, oy };
+    ecs_mask[i] |= CMP_SPR;
+}
 
 void tag_add_player(ecs_entity_t e)
-{ ecs_mask[e]|=TAG_PLAYER; }
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    ecs_mask[i] |= TAG_PLAYER;
+}
 
 void cmp_add_inventory(ecs_entity_t e)
-{ cmp_inv[e]=(cmp_inventory_t){0,false}; ecs_mask[e]|=CMP_INV; }
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    cmp_inv[i] = (cmp_inventory_t){ 0, false };
+    ecs_mask[i] |= CMP_INV;
+}
 
 void cmp_add_item(ecs_entity_t e, item_kind_t k)
-{ cmp_item[e]=(cmp_item_t){k}; ecs_mask[e]|=CMP_ITEM; }
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    cmp_item[i] = (cmp_item_t){ k };
+    ecs_mask[i] |= CMP_ITEM;
+}
 
 void cmp_add_vendor(ecs_entity_t e, item_kind_t sells, int price)
-{ cmp_vendor[e]=(cmp_vendor_t){sells,price}; ecs_mask[e]|=CMP_VENDOR; }
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    cmp_vendor[i] = (cmp_vendor_t){ sells, price };
+    ecs_mask[i] |= CMP_VENDOR;
+}
 
 void cmp_add_size(ecs_entity_t e, float hx, float hy)
-{ cmp_col[e]=(cmp_collider_t){hx,hy}; ecs_mask[e]|=CMP_COL; }
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    cmp_col[i] = (cmp_collider_t){ hx, hy };
+    ecs_mask[i] |= CMP_COL;
+}
 
 // =============== Systems (internal) ======
 static void sys_input(float dt, const input_t* in)
@@ -157,7 +234,7 @@ static void sys_input(float dt, const input_t* in)
     (void)dt;
     const float SPEED = 200.0f;
     for (int e=0;e<ECS_MAX_ENTITIES;++e){
-        if(!ecs_alive[e]) continue;
+        if(!ecs_alive_idx(e)) continue;
         if ((ecs_mask[e]&(TAG_PLAYER|CMP_VEL))==(TAG_PLAYER|CMP_VEL)){
             // uses your input_t exactly
             cmp_vel[e].x = in->moveX * SPEED;
@@ -170,7 +247,7 @@ static void sys_input(float dt, const input_t* in)
 static void sys_physics(float dt)
 {
     for (int e=0;e<ECS_MAX_ENTITIES;++e){
-        if(!ecs_alive[e]) continue;
+        if(!ecs_alive_idx(e)) continue;
         if ((ecs_mask[e]&(CMP_POS|CMP_VEL))==(CMP_POS|CMP_VEL)){
             cmp_pos[e].x += cmp_vel[e].x * dt;
             cmp_pos[e].y += cmp_vel[e].y * dt;
@@ -182,7 +259,7 @@ static void sys_bounds(void)
 {
     int w=g_worldW, h=g_worldH;
     for (int e=0;e<ECS_MAX_ENTITIES;++e){
-        if(!ecs_alive[e]) continue;
+        if(!ecs_alive_idx(e)) continue;
         if (ecs_mask[e] & CMP_POS){
             if (ecs_mask[e] & CMP_COL){
                 float hx = cmp_col[e].hx, hy = cmp_col[e].hy;
@@ -200,29 +277,29 @@ static void sys_bounds(void)
 
 static void sys_proximity(const input_t* in)
 {
-    int player=-1;
-    for(int e=0;e<ECS_MAX_ENTITIES;++e){ if(ecs_alive[e] && (ecs_mask[e]&TAG_PLAYER)){ player=e; break; } }
+    ecs_entity_t player_handle = find_player_handle();
+    int player = ent_index_checked(player_handle);
     if(player<0) return;
 
     const float PICKUP_PAD = 2.0f;
     for (int it=0; it<ECS_MAX_ENTITIES; ++it){
-        if(!ecs_alive[it]) continue;
+        if(!ecs_alive_idx(it)) continue;
         if((ecs_mask[it] & (CMP_ITEM|CMP_COL)) != (CMP_ITEM|CMP_COL)) continue;
         if(cmp_item[it].kind != ITEM_COIN) continue;
 
         if ((ecs_mask[player] & CMP_COL) && col_overlap_padded(player, it, PICKUP_PAD)){
-            ev_emit((ev_t){EV_PICKUP, player, it});
+            ev_emit((ev_t){EV_PICKUP, player_handle, handle_from_index(it)});
         }
     }
 
     if (input_pressed(in, BTN_INTERACT)){
         const float INTERACT_PAD = 30.0f;
         for(int v=0; v<ECS_MAX_ENTITIES; ++v){
-            if(!ecs_alive[v]) continue;
+            if(!ecs_alive_idx(v)) continue;
             if(!(ecs_mask[v]&CMP_VENDOR)) continue;
             if(!(ecs_mask[v]&CMP_COL) || !(ecs_mask[player]&CMP_COL)) continue;
             if (col_overlap_padded(player, v, INTERACT_PAD)){
-                ev_emit((ev_t){EV_TRY_BUY, player, v});
+                ev_emit((ev_t){EV_TRY_BUY, player_handle, handle_from_index(v)});
                 break;
             }
         }
@@ -232,23 +309,27 @@ static void sys_proximity(const input_t* in)
 static void sys_events(void)
 {
     for(int i=0;i<ev_count;++i){
-        ev_t e = ev_queue[i];
-        TraceLog(LOG_INFO, "Handle event:\t type=%d source=%d target=%d", e.type, e.a, e.b);
-        switch(e.type){
+        ev_t ev = ev_queue[i];
+        int ia = ent_index_checked(ev.a);
+        int ib = ent_index_checked(ev.b);
+        if (ia < 0 || ib < 0) continue; // stale, ignore TODO: Does this leak
+        TraceLog(LOG_INFO, "Handle event:\t type=%d a=(%u,%u) b=(%u,%u)",
+                 ev.type, ev.a.idx, ev.a.gen, ev.b.idx, ev.b.gen);
+        switch(ev.type){
             case EV_PICKUP:
-                if((ecs_mask[e.a]&CMP_INV) && (ecs_mask[e.b]&CMP_ITEM) && cmp_item[e.b].kind==ITEM_COIN){
-                    cmp_inv[e.a].coins += 1;
-                    ecs_destroy(e.b);
-                    ui_toast(1.0f, "Picked up a coin! (%d)", cmp_inv[e.a].coins);
+                if((ecs_mask[ia]&CMP_INV) && (ecs_mask[ib]&CMP_ITEM) && cmp_item[ib].kind==ITEM_COIN){
+                    cmp_inv[ia].coins += 1;
+                    ecs_destroy(ev.b);
+                    ui_toast(1.0f, "Picked up a coin! (%d)", cmp_inv[ia].coins);
                 }
                 break;
 
             case EV_TRY_BUY:
-                if((ecs_mask[e.b]&CMP_VENDOR)==0) break;
-                if((ecs_mask[e.a]&CMP_INV)==0) break;
+                if((ecs_mask[ib]&CMP_VENDOR)==0) break;
+                if((ecs_mask[ia]&CMP_INV)==0) break;
                 {
-                    cmp_vendor_t v = cmp_vendor[e.b];
-                    cmp_inventory_t *pInv = &cmp_inv[e.a];
+                    cmp_vendor_t v = cmp_vendor[ib];
+                    cmp_inventory_t *pInv = &cmp_inv[ia];
 
                     if(v.sells==ITEM_HAT){
                         if(pInv->hasHat){
@@ -259,11 +340,11 @@ static void sys_events(void)
                             pInv->coins -= v.price;
                             pInv->hasHat = true;
 
-                            if ((ecs_mask[e.a]&CMP_SPR) && g_hatTexture.id != 0){
-                                cmp_spr[e.a].tex = g_hatTexture;
-                                cmp_spr[e.a].src = (Rectangle){0,0,(float)g_hatTexture.width,(float)g_hatTexture.height};
-                                cmp_spr[e.a].ox  = g_hatTexture.width/2.0f;
-                                cmp_spr[e.a].oy  = g_hatTexture.height/2.0f;
+                            if ((ecs_mask[ia]&CMP_SPR) && g_hatTexture.id != 0){
+                                cmp_spr[ia].tex = g_hatTexture;
+                                cmp_spr[ia].src = (Rectangle){0,0,(float)g_hatTexture.width,(float)g_hatTexture.height};
+                                cmp_spr[ia].ox  = g_hatTexture.width/2.0f;
+                                cmp_spr[ia].oy  = g_hatTexture.height/2.0f;
                             }
                             ui_toast(1.5f, "Bought hat for %d coins!", v.price);
                         } else {
@@ -291,7 +372,7 @@ void ecs_tick(float fixed_dt, const input_t* in)
 void ecs_render_world(void)
 {
     for (int e=0;e<ECS_MAX_ENTITIES;++e){
-        if(!ecs_alive[e]) continue;
+        if(!ecs_alive_idx(e)) continue;
         if ((ecs_mask[e]&(CMP_POS|CMP_SPR))==(CMP_POS|CMP_SPR)){
             DrawTexturePro(
                 cmp_spr[e].tex,
@@ -317,11 +398,13 @@ void ecs_render_world(void)
 
 void ecs_draw_vendor_hints(void)
 {
-    int p = find_player();
+    ecs_entity_t handle = find_player_handle();
+    int p = ent_index_checked(handle);
+
     if (p < 0 || !(ecs_mask[p] & CMP_COL)) return;
 
     for (int v=0; v<ECS_MAX_ENTITIES; ++v){
-        if(!ecs_alive[v]) continue;
+        if(!ecs_alive_idx(v)) continue;
         if ((ecs_mask[v] & (CMP_VENDOR | CMP_COL)) != (CMP_VENDOR | CMP_COL)) continue;
         if (v == p) continue;
 
@@ -343,7 +426,7 @@ void ecs_debug_draw(void)
 {
 #if DEBUG_COLLISION
     for (int e=0; e<ECS_MAX_ENTITIES; ++e){
-        if(!ecs_alive[e]) continue;
+        if(!ecs_alive_idx(e)) continue;
         if((ecs_mask[e] & (CMP_POS | CMP_COL)) == (CMP_POS | CMP_COL)){
             float x = cmp_pos[e].x, y = cmp_pos[e].y;
             float hx = cmp_col[e].hx, hy = cmp_col[e].hy;
@@ -374,7 +457,9 @@ void ecs_debug_draw(void)
 
 void ecs_get_player_stats(int* outCoins, bool* outHasHat)
 {
-    int p = find_player();
+    ecs_entity_t handle = find_player_handle();
+    int p = ent_index_checked(handle);
+
     int coins = 0; bool hat=false;
     if (p >= 0 && (ecs_mask[p]&CMP_INV)) { coins = cmp_inv[p].coins; hat = cmp_inv[p].hasHat; }
     if (outCoins) *outCoins = coins;
