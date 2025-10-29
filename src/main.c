@@ -20,28 +20,32 @@
     } \
 }while(0)
 
-int main(void)
-{
-    const int W=800, H=450;
-    InitWindow(W, H, "raylib + ECS: coins, vendor, hat");
-    SetTargetFPS(120);
+static Texture2D tex_player, tex_player_hat, tex_coin, tex_npc;
 
+void init(int width, int height)
+{
+    //Setup Raylib
+    InitWindow(width, height, "raylib + ECS: coins, vendor, hat");
+    SetTargetFPS(120);
+    //Setup Custom Logging
     logger_use_raylib();
     log_set_min_level(LOG_LVL_DEBUG);
-
+    //Setup Input
     input_init_defaults();
+    //Init ECS and world
     ecs_init();
-    ecs_set_world_size(W, H);
+    ecs_set_world_size(width, height);
+}
 
-    Texture2D tex_player, tex_player_hat, tex_coin, tex_npc;
+int init_entities(int W, int H)
+{
+    //Init textures for entities
     TRY_TEX(tex_player,     "assets/player.png");
     TRY_TEX(tex_player_hat, "assets/player_hat.png");
     TRY_TEX(tex_coin,       "assets/coin.png");
     TRY_TEX(tex_npc,        "assets/npc.png");
-
     //TODO: UGLY TMP THING, assset manager and renderer decisions need made to avoid this
     ecs_set_hat_texture(tex_player_hat);
-
     // Player
     ecs_entity_t player = ecs_create();
     cmp_add_position(player, W/2.0f, H/2.0f);
@@ -52,7 +56,6 @@ int main(void)
     tag_add_player(player);
     cmp_add_inventory(player);
     cmp_add_size(player, 12.0f, 12.0f);
-
     // Coins
     const Vector2 coinPos[3] = {
         { W/2.0f + 120.0f, H/2.0f },
@@ -68,7 +71,6 @@ int main(void)
         cmp_add_item(c, ITEM_COIN);
         cmp_add_size(c, tex_coin.width * 0.5f, tex_coin.height * 0.5f);
     }
-
     // NPC vendor
     ecs_entity_t npc = ecs_create();
     cmp_add_position(npc, 100.0f, 160.0f);
@@ -77,6 +79,15 @@ int main(void)
                    tex_npc.width/2.0f, tex_npc.height/2.0f);
     cmp_add_vendor(npc, ITEM_HAT, 3);
     cmp_add_size(npc, 12.0f, 16.0f);
+    return 0;
+}
+
+int main(void)
+{
+    const int W=800, H=450;
+    init(W, H);
+    int texture_success = init_entities(W, H);
+    if(texture_success != 0) return texture_success;
 
     // Fixed timestep
     const float FIXED_DT = 1.0f/60.0f;
