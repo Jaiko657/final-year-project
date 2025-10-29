@@ -1,4 +1,5 @@
 #include "ecs.h"
+#include "logger.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -81,7 +82,7 @@ static int  ev_count = 0;
 static void ev_emit(ev_t e){
     if (ev_count < EV_MAX) {
         ev_queue[ev_count++] = e;
-        TraceLog(LOG_INFO, "Emit event:\t type=%d a=(%u,%u) b=(%u,%u)",
+        LOGC(LOGCAT_ECS, LOG_LVL_INFO, "Emit event:\t type=%d a=(%u,%u) b=(%u,%u)",
                  e.type, e.a.idx, e.a.gen, e.b.idx, e.b.gen);
     }
 }
@@ -313,7 +314,7 @@ static void sys_events(void)
         int ia = ent_index_checked(ev.a);
         int ib = ent_index_checked(ev.b);
         if (ia < 0 || ib < 0) continue; // stale, ignore TODO: Does this leak
-        TraceLog(LOG_INFO, "Handle event:\t type=%d a=(%u,%u) b=(%u,%u)",
+        LOGC(LOGCAT_ECS, LOG_LVL_INFO, "Handle event:\t type=%d a=(%u,%u) b=(%u,%u)",
                  ev.type, ev.a.idx, ev.a.gen, ev.b.idx, ev.b.gen);
         switch(ev.type){
             case EV_PICKUP:

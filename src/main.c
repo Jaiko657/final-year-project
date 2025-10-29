@@ -1,6 +1,8 @@
 #include "raylib.h"
 #include "components/ecs.h"
 #include "components/input.h"
+#include "components/logger.h"
+#include "components/logger_raylib_adapter.h"
 #include <stdio.h>
 
 /*
@@ -23,6 +25,9 @@ int main(void)
     const int W=800, H=450;
     InitWindow(W, H, "raylib + ECS: coins, vendor, hat");
     SetTargetFPS(120);
+
+    logger_use_raylib();
+    log_set_min_level(LOG_LVL_DEBUG);
 
     input_init_defaults();
     ecs_init();
