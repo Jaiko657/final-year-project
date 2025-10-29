@@ -15,11 +15,6 @@
  * - duplication of size in sprite and collider?
 */
 
-// ================= Debug =================
-#ifndef DEBUG_COLLISION
-#define DEBUG_COLLISION 1
-#endif
-
 // =============== Bitmasks / Tags =========
 #define CMP_POS       (1<<0)
 #define CMP_VEL       (1<<1)
@@ -359,7 +354,7 @@ static void sys_events(void)
     ev_count = 0;
 }
 
-// =============== Public: update/render ===
+// ========= Public: update/iterators ============
 void ecs_tick(float fixed_dt, const input_t* in)
 {
     if(ui_toast_timer > 0.0f) ui_toast_timer -= fixed_dt;
@@ -370,90 +365,73 @@ void ecs_tick(float fixed_dt, const input_t* in)
     sys_events();
 }
 
-void ecs_render_world(void)
-{
-    for (int e=0;e<ECS_MAX_ENTITIES;++e){
-        if(!ecs_alive_idx(e)) continue;
-        if ((ecs_mask[e]&(CMP_POS|CMP_SPR))==(CMP_POS|CMP_SPR)){
-            DrawTexturePro(
-                cmp_spr[e].tex,
-                cmp_spr[e].src,
-                (Rectangle){cmp_pos[e].x, cmp_pos[e].y, cmp_spr[e].src.width, cmp_spr[e].src.height},
-                (Vector2){cmp_spr[e].ox, cmp_spr[e].oy},
-                0.0f,
-                WHITE
-            );
-        }
-    }
+// --- SPRITES ---
+ecs_sprite_iter_t ecs_sprites_begin(void) { return (ecs_sprite_iter_t){ .i = -1 }; }
 
-    // Toast at top
-    if(ui_toast_timer > 0.0f){
-        int W = GetScreenWidth();
-        const int fontSize = 20;
-        int tw = MeasureText(ui_toast_text, fontSize);
-        int x = (W - tw)/2, y = 10;
-        DrawRectangle(x-8, y-4, tw+16, 28, (Color){0,0,0,180});
-        DrawText(ui_toast_text, x, y, fontSize, RAYWHITE);
+bool ecs_sprites_next(ecs_sprite_iter_t* it, ecs_sprite_view_t* out)
+{
+    for (int i = it->i + 1; i < ECS_MAX_ENTITIES; ++i) {
+        if (!ecs_alive_idx(i)) continue;
+        if ((ecs_mask[i] & (CMP_POS | CMP_SPR)) != (CMP_POS | CMP_SPR)) continue;
+
+        it->i = i;
+        *out = (ecs_sprite_view_t){
+            .tex = cmp_spr[i].tex,
+            .src = cmp_spr[i].src,
+            .x   = cmp_pos[i].x,
+            .y   = cmp_pos[i].y,
+            .ox  = cmp_spr[i].ox,
+            .oy  = cmp_spr[i].oy,
+        };
+        return true;
     }
+    return false;
 }
 
-void ecs_draw_vendor_hints(void)
+// --- COLLIDERS ---
+ecs_collider_iter_t ecs_colliders_begin(void) { return (ecs_collider_iter_t){ .i = -1 }; }
+
+bool ecs_colliders_next(ecs_collider_iter_t* it, ecs_collider_view_t* out)
 {
-    ecs_entity_t handle = find_player_handle();
-    int p = ent_index_checked(handle);
+    for (int i = it->i + 1; i < ECS_MAX_ENTITIES; ++i) {
+        if (!ecs_alive_idx(i)) continue;
+        if ((ecs_mask[i] & (CMP_POS | CMP_COL)) != (CMP_POS | CMP_COL)) continue;
 
-    if (p < 0 || !(ecs_mask[p] & CMP_COL)) return;
+        it->i = i;
+        *out = (ecs_collider_view_t){
+            .x = cmp_pos[i].x, .y = cmp_pos[i].y,
+            .hx = cmp_col[i].hx, .hy = cmp_col[i].hy,
+        };
+        return true;
+    }
+    return false;
+}
 
-    for (int v=0; v<ECS_MAX_ENTITIES; ++v){
-        if(!ecs_alive_idx(v)) continue;
+// --- UI / HINTS (data only) ---
+bool        ecs_toast_is_active(void) { return ui_toast_timer > 0.0f; }
+const char* ecs_toast_get_text(void)   { return ui_toast_text; }
+
+bool ecs_vendor_hint_is_active(int* out_x, int* out_y, const char** out_text)
+{
+    ecs_entity_t h = find_player_handle();
+    int p = ent_index_checked(h);
+    if (p < 0 || !(ecs_mask[p] & CMP_COL)) return false;
+
+    for (int v = 0; v < ECS_MAX_ENTITIES; ++v) {
+        if (!ecs_alive_idx(v)) continue;
         if ((ecs_mask[v] & (CMP_VENDOR | CMP_COL)) != (CMP_VENDOR | CMP_COL)) continue;
         if (v == p) continue;
 
-        if (col_overlap_padded(p, v, 30.0f)){
-            char msg[64];
-            snprintf(msg, sizeof(msg), "Press E to buy hat (%d)", cmp_vendor[v].price);
-
-            int tw = MeasureText(msg, 18);
-            int x = (int)(cmp_pos[v].x - tw/2), y = (int)(cmp_pos[v].y - 32);
-
-            DrawRectangle(x-6, y-6, tw+12, 26, (Color){0,0,0,160});
-            DrawText(msg, x, y, 18, RAYWHITE);
-            break;
+        if (col_overlap_padded(p, v, 30.0f)) {
+            static char buf[64];
+            snprintf(buf, sizeof(buf), "Press E to buy hat (%d)", cmp_vendor[v].price);
+            if (out_text) *out_text = buf;
+            if (out_x)    *out_x = (int)cmp_pos[v].x;
+            if (out_y)    *out_y = (int)cmp_pos[v].y;
+            return true;
         }
     }
-}
-
-void ecs_debug_draw(void)
-{
-#if DEBUG_COLLISION
-    for (int e=0; e<ECS_MAX_ENTITIES; ++e){
-        if(!ecs_alive_idx(e)) continue;
-        if((ecs_mask[e] & (CMP_POS | CMP_COL)) == (CMP_POS | CMP_COL)){
-            float x = cmp_pos[e].x, y = cmp_pos[e].y;
-            float hx = cmp_col[e].hx, hy = cmp_col[e].hy;
-
-            int rx = (int)floorf(x - hx);
-            int ry = (int)floorf(y - hy);
-            int rw = (int)ceilf(hx * 2.0f);
-            int rh = (int)ceilf(hy * 2.0f);
-
-            DrawRectangleLines(rx, ry, rw, rh, RED);
-        }
-    }
-
-    int fps = GetFPS();
-    float frameTime = GetFrameTime() * 1000.0f;
-    char buf[64];
-    snprintf(buf, sizeof(buf), "FPS: %d | Frame: %.2f ms", fps, frameTime);
-
-    int fontSize = 18;
-    int tw = MeasureText(buf, fontSize);
-    int x = (GetScreenWidth() - tw) / 2;
-    int y = GetScreenHeight() - fontSize - 6;
-
-    DrawRectangle(x - 8, y - 4, tw + 16, fontSize + 8, (Color){0,0,0,160});
-    DrawText(buf, x, y, fontSize, RAYWHITE);
-#endif
+    return false;
 }
 
 void ecs_get_player_stats(int* outCoins, bool* outHasHat)

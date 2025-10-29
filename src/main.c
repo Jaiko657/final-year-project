@@ -4,12 +4,21 @@
 #include "components/logger.h"
 #include "components/logger_raylib_adapter.h"
 #include <stdio.h>
+#include <math.h>
 
 /*
  * TODO:
  * - create renderer module, hide raylib types etc
  * - figure out pixel scaling sub pixel movements (allow entities to be off the scale, sub pixel position)
 */
+
+// ================= Debug =================
+#ifndef DEBUG_COLLISION
+#define DEBUG_COLLISION 0
+#endif
+#ifndef DEBUG_FPS
+#define DEBUG_FPS 1
+#endif
 
 #define TRY_TEX(var, path) do{ \
     var = LoadTexture(path); \
@@ -82,6 +91,78 @@ int init_entities(int W, int H)
     return 0;
 }
 
+void render(void)
+{
+    for (ecs_sprite_iter_t it = ecs_sprites_begin(); ; ) {
+        ecs_sprite_view_t v;
+        if (!ecs_sprites_next(&it, &v)) break;
+
+        DrawTexturePro(
+            v.tex,
+            v.src,
+            (Rectangle){ v.x, v.y, v.src.width, v.src.height },
+            (Vector2){ v.ox, v.oy },
+            0.0f,
+            WHITE
+        );
+    }
+  // Vendor Hints
+    {
+        int vx, vy; const char* msg = NULL;
+        if (ecs_vendor_hint_is_active(&vx, &vy, &msg)) {
+            const int fs = 18;
+            int tw = MeasureText(msg, fs);
+            int x = vx - tw/2;
+            int y = vy - 32;
+
+            DrawRectangle(x-6, y-6, tw+12, 26, (Color){0,0,0,160});
+            DrawText(msg, x, y, fs, RAYWHITE);
+        }
+    }
+    #if DEBUG_COLLISION
+    // --- collider debug outlines ---
+    for (ecs_collider_iter_t it = ecs_colliders_begin(); ; )
+    {
+        ecs_collider_view_t c;
+        if (!ecs_colliders_next(&it, &c)) break;
+
+        int rx = (int)floorf(c.x - c.hx);
+        int ry = (int)floorf(c.y - c.hy);
+        int rw = (int)ceilf(2.f * c.hx);
+        int rh = (int)ceilf(2.f * c.hy);
+        DrawRectangleLines(rx, ry, rw, rh, RED);
+    }
+    #endif
+    #if DEBUG_FPS
+    {
+        int fps = GetFPS();
+        float ms = GetFrameTime() * 1000.0f;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "FPS: %d | %.2f ms", fps, ms);
+
+        int fs = 18;
+        int tw = MeasureText(buf, fs);
+        int x = (GetScreenWidth() - tw)/2;
+        int y = GetScreenHeight() - fs - 6;
+
+        DrawRectangle(x-8, y-4, tw+16, fs+8, (Color){0,0,0,160});
+        DrawText(buf, x, y, fs, RAYWHITE);
+    }
+    #endif
+
+    // --- toast ---
+    if (ecs_toast_is_active()) {
+        const char* t = ecs_toast_get_text();
+        const int fs = 20;
+        int tw = MeasureText(t, fs);
+        int x = (GetScreenWidth() - tw)/2;
+        int y = 10;
+
+        DrawRectangle(x-8, y-4, tw+16, 28, (Color){0,0,0,180});
+        DrawText(t, x, y, fs, RAYWHITE);
+    }
+}
+
 int main(void)
 {
     const int W=800, H=450;
@@ -107,10 +188,9 @@ int main(void)
         BeginDrawing();
         ClearBackground((Color){24,24,32,255});
 
-        ecs_render_world();
-        ecs_debug_draw();
-        ecs_draw_vendor_hints();
+        render();
 
+        
         // HUD
         int coins=0; bool hasHat=false;
         ecs_get_player_stats(&coins, &hasHat);

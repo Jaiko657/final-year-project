@@ -4,6 +4,20 @@
 #include "raylib.h"             // Texture2D, Rectangle
 #include "input.h"
 
+// TEMPARARY DRAW VIEWS WITH RAYLIB types
+// --- draw views (data only) ---
+typedef struct {
+    Texture2D tex;
+    Rectangle src;
+    float x, y;   // world position
+    float ox, oy; // origin
+} ecs_sprite_view_t;
+
+typedef struct {
+    float x, y; // center
+    float hx, hy; // half extents
+} ecs_collider_view_t;
+
 // ====== Public constants / types ======
 #define ECS_MAX_ENTITIES 1024
 typedef struct {
@@ -35,9 +49,27 @@ void cmp_add_size     (ecs_entity_t e, float hx, float hy); // AABB half-extents
 
 // ====== Update & render ======
 void ecs_tick(float fixed_dt, const input_t* in);
-void ecs_render_world(void);
-void ecs_debug_draw(void);
-void ecs_draw_vendor_hints(void);
+
+// ========= Iterators  ========
+// --- sprite iterator ---
+typedef struct { int i; } ecs_sprite_iter_t;
+ecs_sprite_iter_t ecs_sprites_begin(void);
+bool ecs_sprites_next(ecs_sprite_iter_t* it, ecs_sprite_view_t* out);
+
+// --- collider iterator ---
+typedef struct { int i; } ecs_collider_iter_t;
+ecs_collider_iter_t ecs_colliders_begin(void);
+bool ecs_colliders_next(ecs_collider_iter_t* it, ecs_collider_view_t* out);
+
 
 // ====== HUD helpers ======
+void ecs_get_player_stats(int* outCoins, bool* outHasHat);
+// toast
+bool        ecs_toast_is_active(void);
+const char* ecs_toast_get_text(void);
+
+// vendor hint: world anchor + message if active
+bool ecs_vendor_hint_is_active(int* out_x, int* out_y, const char** out_text);
+
+// any HUD bits you need
 void ecs_get_player_stats(int* outCoins, bool* outHasHat);
