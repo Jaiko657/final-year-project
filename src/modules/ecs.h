@@ -1,14 +1,15 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
-#include "raylib.h"             // Texture2D, Rectangle
+#include "../includes/engine_types.h"
 #include "input.h"
+#include "asset.h"
 
 // TEMPARARY DRAW VIEWS WITH RAYLIB types
 // --- draw views (data only) ---
 typedef struct {
-    Texture2D tex;
-    Rectangle src;
+    tex_handle_t tex;
+    rectf src;
     float x, y;   // world position
     float ox, oy; // origin
 } ecs_sprite_view_t;
@@ -32,7 +33,6 @@ typedef enum { ITEM_COIN = 1, ITEM_HAT = 2 } item_kind_t;
 void ecs_init(void);
 void ecs_shutdown(void);
 void ecs_set_world_size(int w, int h);
-void ecs_set_hat_texture(Texture2D tex);
 
 // ====== Entity / components ======
 ecs_entity_t ecs_create(void);
@@ -40,7 +40,8 @@ void         ecs_destroy(ecs_entity_t e);
 
 void cmp_add_position (ecs_entity_t e, float x, float y);
 void cmp_add_velocity (ecs_entity_t e, float x, float y);
-void cmp_add_sprite   (ecs_entity_t e, Texture2D t, Rectangle src, float ox, float oy);
+void cmp_add_sprite_handle(ecs_entity_t e, tex_handle_t h, rectf src, float ox, float oy);
+void cmp_add_sprite_path  (ecs_entity_t e, const char* path, rectf src, float ox, float oy);
 void tag_add_player   (ecs_entity_t e);
 void cmp_add_inventory(ecs_entity_t e);
 void cmp_add_item     (ecs_entity_t e, item_kind_t k);
@@ -70,6 +71,3 @@ const char* ecs_toast_get_text(void);
 
 // vendor hint: world anchor + message if active
 bool ecs_vendor_hint_is_active(int* out_x, int* out_y, const char** out_text);
-
-// any HUD bits you need
-void ecs_get_player_stats(int* outCoins, bool* outHasHat);

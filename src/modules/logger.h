@@ -25,7 +25,7 @@ bool log_would_log(log_level_t lvl);
 void log_msg(log_level_t lvl, const log_cat_t* cat, const char* fmt, ...);
 
 // Convenience
-#define LOGC(cat, lvl, fmt, ...) do{ if(log_would_log(lvl)) log_msg((lvl), &(cat), fmt, ##__VA_ARGS__); }while(0)
+#define LOGC(cat, lvl, fmt, ...) do { if (log_would_log(lvl)) { log_cat_t _cat_tmp_ = (cat); log_msg((lvl), &_cat_tmp_, fmt, ##__VA_ARGS__); } } while (0)
 #define LOG(lvl, fmt, ...)       do{ static const log_cat_t _anon = { NULL }; if(log_would_log(lvl)) log_msg((lvl), &_anon, fmt, ##__VA_ARGS__); }while(0)
 
 // Common categories

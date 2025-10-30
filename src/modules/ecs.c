@@ -7,9 +7,12 @@
 #include <stdbool.h>
 
 /*
+    if(input_pressed(in, BTN_ASSET_DEBUG_PRINT))
+    {
+        ev_emit((ev_t){EV_ASSET_DEBUG_PRINT, find_player_handle(), find_player_handle()});
+    }
  * TODO:
  * - remove Raylib types
- * - Add Generations (PRIORITY)
  * - remove event stuff, need to do proper pipelines
  * - registration of systems etc (modularity)
  * - duplication of size in sprite and collider?
@@ -28,7 +31,7 @@
 // =============== Components (internal) ===
 typedef struct { float x, y; } cmp_position_t;
 typedef struct { float x, y; } cmp_velocity_t;
-typedef struct { Texture2D tex; Rectangle src; float ox, oy; } cmp_sprite_t;
+typedef struct { tex_handle_t tex; rectf src; float ox, oy; } cmp_sprite_t;
 typedef struct { float hx, hy; } cmp_collider_t;
 typedef struct { item_kind_t kind; } cmp_item_t;
 typedef struct { int coins; bool hasHat; } cmp_inventory_t;
@@ -52,7 +55,6 @@ static int      free_top = 0;
 
 // Config
 static int g_worldW = 800, g_worldH = 450;
-static Texture2D g_hatTexture = (Texture2D){0};
 
 // =============== Toast UI =================
 static char  ui_toast_text[128] = {0};
@@ -67,7 +69,7 @@ static void ui_toast(float secs, const char* fmt, ...)
 }
 
 // =============== Events ===================
-typedef enum { EV_PICKUP, EV_TRY_BUY } ev_type_t;
+typedef enum { EV_PICKUP, EV_TRY_BUY, EV_ASSET_DEBUG_PRINT } ev_type_t;
 typedef struct { ev_type_t type; ecs_entity_t a, b; } ev_t;
 
 #define EV_MAX 128
@@ -117,6 +119,14 @@ static bool col_overlap_padded(int a, int b, float pad){
     return fabsf(ax-bx) <= (ahx+bhx) && fabsf(ay-by) <= (ahy+bhy);
 }
 
+static void cmp_sprite_release_idx(int i){
+    if (!(ecs_mask[i] & CMP_SPR)) return;
+    if (asset_texture_valid(cmp_spr[i].tex)){
+        asset_release_texture(cmp_spr[i].tex);
+        cmp_spr[i].tex = (tex_handle_t){0,0};
+    }
+}
+
 // =============== Public: lifecycle ========
 void ecs_init(void){
     memset(ecs_mask, 0, sizeof(ecs_mask));
@@ -134,7 +144,6 @@ void ecs_init(void){
 }
 void ecs_shutdown(void){ /* no heap to free currently */ }
 void ecs_set_world_size(int w, int h){ g_worldW = w; g_worldH = h; }
-void ecs_set_hat_texture(Texture2D tex){ g_hatTexture = tex; }
 
 // =============== Public: entity ===========
 ecs_entity_t ecs_create(void)
@@ -152,6 +161,7 @@ void ecs_destroy(ecs_entity_t e)
 {
     int idx = ent_index_checked(e);
     if (idx < 0) return;
+    cmp_sprite_release_idx(idx);          //Release texture from asset manager
     uint32_t g = ecs_gen[idx];
     g = (g + 1) ? (g + 1) : 1;            // bump; avoid 0
     ecs_gen[idx] = 0;                     // dead
@@ -177,12 +187,22 @@ void cmp_add_velocity(ecs_entity_t e, float x, float y)
     ecs_mask[i] |= CMP_VEL;
 }
 
-void cmp_add_sprite(ecs_entity_t e, Texture2D t, Rectangle src, float ox, float oy)
+void cmp_add_sprite_handle(ecs_entity_t e, tex_handle_t h, rectf src, float ox, float oy)
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
-    cmp_spr[i] = (cmp_sprite_t){ t, src, ox, oy };
+    // add ref for this handle
+    if (asset_texture_valid(h)) asset_addref_texture(h);
+    cmp_spr[i] = (cmp_sprite_t){ h, src, ox, oy };
     ecs_mask[i] |= CMP_SPR;
+}
+
+void cmp_add_sprite_path(ecs_entity_t e, const char* path, rectf src, float ox, float oy)
+{
+    tex_handle_t h = asset_acquire_texture(path); // +1 ref (or cached)
+    cmp_add_sprite_handle(e, h, src, ox, oy);
+    //release because 2 lines above add 2 to ref count, which is bug
+    asset_release_texture(h);
 }
 
 void tag_add_player(ecs_entity_t e)
@@ -276,7 +296,12 @@ static void sys_proximity(const input_t* in)
     ecs_entity_t player_handle = find_player_handle();
     int player = ent_index_checked(player_handle);
     if(player<0) return;
-
+    // TODO: REMOVE this and put in proper debug handle system
+    if(input_pressed(in, BTN_ASSET_DEBUG_PRINT))
+    {
+        ev_emit((ev_t){EV_ASSET_DEBUG_PRINT, find_player_handle(), find_player_handle()});
+    }
+    //
     const float PICKUP_PAD = 2.0f;
     for (int it=0; it<ECS_MAX_ENTITIES; ++it){
         if(!ecs_alive_idx(it)) continue;
@@ -306,12 +331,17 @@ static void sys_events(void)
 {
     for(int i=0;i<ev_count;++i){
         ev_t ev = ev_queue[i];
+    //TODO: Annoying i have to have 2 valid entities have to use player 2 times just to have valid on asset debug
         int ia = ent_index_checked(ev.a);
         int ib = ent_index_checked(ev.b);
         if (ia < 0 || ib < 0) continue; // stale, ignore TODO: Does this leak
         LOGC(LOGCAT_ECS, LOG_LVL_INFO, "Handle event:\t type=%d a=(%u,%u) b=(%u,%u)",
                  ev.type, ev.a.idx, ev.a.gen, ev.b.idx, ev.b.gen);
         switch(ev.type){
+            case EV_ASSET_DEBUG_PRINT:
+                asset_reload_all();
+                asset_log_debug();
+                break;
             case EV_PICKUP:
                 if((ecs_mask[ia]&CMP_INV) && (ecs_mask[ib]&CMP_ITEM) && cmp_item[ib].kind==ITEM_COIN){
                     cmp_inv[ia].coins += 1;
@@ -326,7 +356,6 @@ static void sys_events(void)
                 {
                     cmp_vendor_t v = cmp_vendor[ib];
                     cmp_inventory_t *pInv = &cmp_inv[ia];
-
                     if(v.sells==ITEM_HAT){
                         if(pInv->hasHat){
                             ui_toast(1.5f, "You already have a hat.");
@@ -336,11 +365,16 @@ static void sys_events(void)
                             pInv->coins -= v.price;
                             pInv->hasHat = true;
 
-                            if ((ecs_mask[ia]&CMP_SPR) && g_hatTexture.id != 0){
-                                cmp_spr[ia].tex = g_hatTexture;
-                                cmp_spr[ia].src = (Rectangle){0,0,(float)g_hatTexture.width,(float)g_hatTexture.height};
-                                cmp_spr[ia].ox  = g_hatTexture.width/2.0f;
-                                cmp_spr[ia].oy  = g_hatTexture.height/2.0f;
+                            if ((ecs_mask[ia] & CMP_SPR)){
+                                if (asset_texture_valid(cmp_spr[ia].tex)) asset_release_texture(cmp_spr[ia].tex);
+                                tex_handle_t hatTexture = asset_acquire_texture("assets/player_hat.png");
+                                cmp_spr[ia].tex = hatTexture;
+
+                                int w=0, h=0;
+                                asset_texture_size(hatTexture, &w, &h);
+                                cmp_spr[ia].src = rectf_xywh(0,0,(float)w,(float)h);
+                                cmp_spr[ia].ox  = w * 0.5f;
+                                cmp_spr[ia].oy  = h * 0.5f;
                             }
                             ui_toast(1.5f, "Bought hat for %d coins!", v.price);
                         } else {

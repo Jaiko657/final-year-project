@@ -19,7 +19,8 @@ typedef enum {
     BTN_INTERACT,
     BTN_MOUSE_L,
     BTN_MOUSE_R,
-    BTN_COUNT
+    BTN_ASSET_DEBUG_PRINT,
+    BTN_COUNT               // <- Must be last as used to loop over enum until this point
 } button_t;
 
 /*

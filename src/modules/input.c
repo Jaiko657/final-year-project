@@ -53,13 +53,15 @@ void input_init_defaults(void){
     bind_add(BTN_UP,    KEY_UP);     bind_add(BTN_UP,    KEY_W);
     bind_add(BTN_DOWN,  KEY_DOWN);   bind_add(BTN_DOWN,  KEY_S);
 
-    /* Interact: E or Space */
+    /* Interact: E */
     bind_add(BTN_INTERACT, KEY_E);
-    bind_add(BTN_INTERACT, KEY_SPACE);
 
     /* Mouse buttons */
     bind_add(BTN_MOUSE_L, MOUSE_LEFT_BUTTON);
     bind_add(BTN_MOUSE_R, MOUSE_RIGHT_BUTTON);
+
+  //TODO: WRAP IN DEBUG
+    bind_add(BTN_ASSET_DEBUG_PRINT, KEY_SPACE);
 }
 
 /*
