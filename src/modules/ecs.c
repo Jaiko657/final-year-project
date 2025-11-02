@@ -7,12 +7,7 @@
 #include <stdbool.h>
 
 /*
-    if(input_pressed(in, BTN_ASSET_DEBUG_PRINT))
-    {
-        ev_emit((ev_t){EV_ASSET_DEBUG_PRINT, find_player_handle(), find_player_handle()});
-    }
  * TODO:
- * - remove Raylib types
  * - remove event stuff, need to do proper pipelines
  * - registration of systems etc (modularity)
  * - duplication of size in sprite and collider?

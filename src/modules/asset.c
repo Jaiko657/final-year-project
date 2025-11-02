@@ -3,10 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
-
-#ifndef RLAPI
 #include "raylib.h"
-#endif
 
 //trying to not use gnu util
 static char* xstrdup(const char* s){
@@ -115,7 +112,6 @@ void asset_release_texture(tex_handle_t h){
     if (!s) return;
     if (s->refc == 0) return; // already zeroed; ignore double-free
     s->refc--;
-    // Actual unload deferred to asset_collect()
 }
 
 bool asset_texture_valid(tex_handle_t h){

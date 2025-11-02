@@ -1,0 +1,145 @@
+#include "renderer.h"
+
+#include "raylib.h"
+#include "ecs.h"
+#include "asset.h"
+#include "logger.h"
+
+#include <math.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+typedef struct {
+    ecs_sprite_view_t v;
+    float key;
+} Item;
+
+static int cmp_item(const void* a, const void* b) {
+    float ka = ((const Item*)a)->key;
+    float kb = ((const Item*)b)->key;
+    return (ka > kb) - (ka < kb);
+}
+
+bool renderer_init(int width, int height, const char* title, int target_fps) {
+    InitWindow(width, height, title ? title : "Game");
+    if (!IsWindowReady()) {
+        LOGC(LOGCAT_REND, LOG_LVL_FATAL, "Renderer: window failed to init");
+        return false;
+    }
+    SetTargetFPS(target_fps > 0 ? target_fps : 60);
+    SetTraceLogLevel(LOG_DEBUG);   // make Raylib print DEBUG+
+    return true;
+}
+
+static void draw_world_and_ui(void) {
+    // ===== painter’s algorithm queue =====
+    Item items[ECS_MAX_ENTITIES];
+    int count = 0;
+
+    for (ecs_sprite_iter_t it = ecs_sprites_begin(); ; ) {
+        ecs_sprite_view_t v;
+        if (!ecs_sprites_next(&it, &v)) break;
+
+        // depth: screen-space "feet"
+        float bottomY = (v.y - v.oy) + v.src.h;
+        items[count++] = (Item){ .v = v, .key = bottomY };
+    }
+    qsort(items, count, sizeof(Item), cmp_item);
+
+    for (int i = 0; i < count; ++i) {
+        ecs_sprite_view_t v = items[i].v;
+
+        Texture2D t = asset_backend_resolve_texture_value(v.tex);
+        if (t.id == 0) continue;
+
+        Rectangle src = (Rectangle){ v.src.x, v.src.y, v.src.w, v.src.h };
+        Rectangle dst = (Rectangle){ v.x, v.y, v.src.w, v.src.h };
+        Vector2   origin = (Vector2){ v.ox, v.oy };
+
+        DrawTexturePro(t, src, dst, origin, 0.0f, WHITE);
+    }
+
+    // ===== vendor hint =====
+    {
+        int vx, vy; const char* msg = NULL;
+        if (ecs_vendor_hint_is_active(&vx, &vy, &msg)) {
+            const int fs = 18;
+            int tw = MeasureText(msg, fs);
+            int x = vx - tw/2;
+            int y = vy - 32;
+
+            DrawRectangle(x-6, y-6, tw+12, 26, (Color){0,0,0,160});
+            DrawText(msg, x, y, fs, RAYWHITE);
+        }
+    }
+
+#if DEBUG_COLLISION
+    // ===== collider debug outlines =====
+    for (ecs_collider_iter_t it = ecs_colliders_begin(); ; ) {
+        ecs_collider_view_t c;
+        if (!ecs_colliders_next(&it, &c)) break;
+
+        int rx = (int)floorf(c.x - c.hx);
+        int ry = (int)floorf(c.y - c.hy);
+        int rw = (int)ceilf(2.f * c.hx);
+        int rh = (int)ceilf(2.f * c.hy);
+        DrawRectangleLines(rx, ry, rw, rh, RED);
+    }
+#endif
+
+#if DEBUG_FPS
+    // ===== FPS overlay =====
+    {
+        int fps = GetFPS();
+        float ms = GetFrameTime() * 1000.0f;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "FPS: %d | %.2f ms", fps, ms);
+
+        int fs = 18;
+        int tw = MeasureText(buf, fs);
+        int x = (GetScreenWidth() - tw)/2;
+        int y = GetScreenHeight() - fs - 6;
+
+        DrawRectangle(x-8, y-4, tw+16, fs+8, (Color){0,0,0,160});
+        DrawText(buf, x, y, fs, RAYWHITE);
+    }
+#endif
+
+    // ===== toast =====
+    if (ecs_toast_is_active()) {
+        const char* t = ecs_toast_get_text();
+        const int fs = 20;
+        int tw = MeasureText(t, fs);
+        int x = (GetScreenWidth() - tw)/2;
+        int y = 10;
+
+        DrawRectangle(x-8, y-4, tw+16, 28, (Color){0,0,0,180});
+        DrawText(t, x, y, fs, RAYWHITE);
+    }
+
+    // ===== HUD =====
+    {
+        int coins=0; bool hasHat=false;
+        ecs_get_player_stats(&coins, &hasHat);
+        char hud[64];
+        snprintf(hud, sizeof(hud), "Coins: %d  (%s)", coins, hasHat?"Hat ON":"No hat");
+        DrawText(hud, 10, 10, 20, RAYWHITE);
+        DrawText("Move: Arrows/WASD | Interact: E", 10, 36, 18, GRAY);
+    }
+}
+
+void renderer_next_frame(void) {
+    BeginDrawing();
+    ClearBackground((Color){24,24,32,255});
+
+    draw_world_and_ui();
+
+    // Assets GC after drawing
+    asset_collect();
+
+    EndDrawing();
+}
+
+void renderer_shutdown(void) {
+    if (IsWindowReady()) CloseWindow();
+}
