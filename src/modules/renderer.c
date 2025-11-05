@@ -20,13 +20,18 @@ static int cmp_item(const void* a, const void* b) {
     return (ka > kb) - (ka < kb);
 }
 
+static unsigned char u8(float x){
+    if (x < 0.f) x = 0.f; if (x > 1.f) x = 1.f;
+    return (unsigned char)(x * 255.0f + 0.5f);
+}
+
 bool renderer_init(int width, int height, const char* title, int target_fps) {
     InitWindow(width, height, title ? title : "Game");
     if (!IsWindowReady()) {
         LOGC(LOGCAT_REND, LOG_LVL_FATAL, "Renderer: window failed to init");
         return false;
     }
-    SetTargetFPS(target_fps > 0 ? target_fps : 60);
+    SetTargetFPS(target_fps >= 0 ? target_fps : 60);
     SetTraceLogLevel(LOG_DEBUG);   // make Raylib print DEBUG+
     return true;
 }
@@ -59,7 +64,7 @@ static void draw_world_and_ui(void) {
         DrawTexturePro(t, src, dst, origin, 0.0f, WHITE);
     }
 
-    // ===== vendor hint =====
+    /* ===== vendor hint =====
     {
         int vx, vy; const char* msg = NULL;
         if (ecs_vendor_hint_is_active(&vx, &vy, &msg)) {
@@ -70,6 +75,27 @@ static void draw_world_and_ui(void) {
 
             DrawRectangle(x-6, y-6, tw+12, 26, (Color){0,0,0,160});
             DrawText(msg, x, y, fs, RAYWHITE);
+        }
+    }
+*/
+
+    // ===== floating billboards (from proximity) =====
+    {
+        for (ecs_billboard_iter_t it = ecs_billboards_begin(); ; ) {
+            ecs_billboard_view_t v;
+            if (!ecs_billboards_next(&it, &v)) break;
+
+            const int fs = 18;
+            int tw = MeasureText(v.text, fs);
+            int x = (int)(v.x - tw/2);
+            int y = (int)(v.y + v.y_offset);
+
+            unsigned char a = u8(v.alpha);
+            Color bg = (Color){ 0, 0, 0, (unsigned char)(a * 180 / 255) };
+            Color fg = (Color){ 255, 255, 255, a };
+
+            DrawRectangle(x-6, y-6, tw+12, 26, bg);
+            DrawText(v.text, x, y, fs, fg);
         }
     }
 
@@ -127,6 +153,8 @@ static void draw_world_and_ui(void) {
         DrawText("Move: Arrows/WASD | Interact: E", 10, 36, 18, GRAY);
     }
 }
+
+bool renderer_init(int width, int height, const char* title, int target_fps);
 
 void renderer_next_frame(void) {
     BeginDrawing();

@@ -9,6 +9,12 @@
 #include <stdlib.h>  // for qsort
 
 /*
+ * TODO: In ecs.c there is problem that the new proximity system is not working
+ * For the purchase, the event being created has player as both who and what
+ *Issue is that need to understand how that system works better then fix the issue
+ * */
+
+/*
  * TODO:
  * - figure out pixel scaling sub pixel movements (allow entities to be off the scale, sub pixel position)
 */
@@ -34,6 +40,7 @@ int init_entities(int W, int H)
     tag_add_player(player);
     cmp_add_inventory(player);
     cmp_add_size(player, 12.0f, 12.0f);
+    cmp_add_trigger(player, 2.0f, CMP_ITEM | CMP_COL);
 
     const Vector2 coinPos[3] = {
         { W/2.0f + 120.0f, H/2.0f },
@@ -58,6 +65,11 @@ int init_entities(int W, int H)
     cmp_add_vendor(npc, ITEM_HAT, 3);
     cmp_add_size(npc, 12.0f, 16.0f);
 
+    // Example: add a billboard to vendor that shows when player is near
+    cmp_add_billboard(npc, "Press E to buy hat", -64.0f, 0.10f, BILLBOARD_ACTIVE);
+    // And trigger so vendor reacts to player proximity
+    cmp_add_trigger(npc, 30.0f, TAG_PLAYER | CMP_COL);
+
     // Release setup refs (ECS added its own refs)
     asset_release_texture(tex_player);
     asset_release_texture(tex_coin);
@@ -79,7 +91,7 @@ int main(void)
     ecs_set_world_size(W, H);
 
     // --- renderer/window ---
-    if (!renderer_init(W, H, "raylib + ECS: coins, vendor, hat", 120)) {
+    if (!renderer_init(W, H, "raylib + ECS: coins, vendor, hat", 0)) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "renderer_init failed");
         ecs_shutdown();
         asset_shutdown();

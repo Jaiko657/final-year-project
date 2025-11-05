@@ -8,26 +8,26 @@
 
 /*
  * TODO:
- * - remove event stuff, need to do proper pipelines
  * - registration of systems etc (modularity)
  * - duplication of size in sprite and collider?
 */
-
-// =============== Bitmasks / Tags =========
-#define CMP_POS       (1<<0)
-#define CMP_VEL       (1<<1)
-#define CMP_SPR       (1<<2)
-#define TAG_PLAYER    (1<<4)
-#define CMP_ITEM      (1<<5)
-#define CMP_INV       (1<<6)
-#define CMP_VENDOR    (1<<7)
-#define CMP_COL       (1<<8)
+// TODO: FIX THE ORDERING OF THIS SHIT
+static inline bool         ecs_alive_handle(ecs_entity_t e);
+static inline ecs_entity_t handle_from_index(int i);
+static inline int          ent_index_checked(ecs_entity_t e);
 
 // =============== Components (internal) ===
 typedef struct { float x, y; } cmp_position_t;
 typedef struct { float x, y; } cmp_velocity_t;
 typedef struct { tex_handle_t tex; rectf src; float ox, oy; } cmp_sprite_t;
 typedef struct { float hx, hy; } cmp_collider_t;
+
+typedef struct {
+    float    pad;           // detection padding (AABB expand)
+    uint32_t target_mask;   // required mask bits on the other entity
+} cmp_trigger_t;
+
+// temp gameplay components kept for now
 typedef struct { item_kind_t kind; } cmp_item_t;
 typedef struct { int coins; bool hasHat; } cmp_inventory_t;
 typedef struct { item_kind_t sells; int price; } cmp_vendor_t;
@@ -40,6 +40,8 @@ static cmp_position_t  cmp_pos[ECS_MAX_ENTITIES];
 static cmp_velocity_t  cmp_vel[ECS_MAX_ENTITIES];
 static cmp_sprite_t    cmp_spr[ECS_MAX_ENTITIES];
 static cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
+static cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
+static cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
 static cmp_item_t      cmp_item[ECS_MAX_ENTITIES];
 static cmp_inventory_t cmp_inv[ECS_MAX_ENTITIES];
 static cmp_vendor_t    cmp_vendor[ECS_MAX_ENTITIES];
@@ -64,7 +66,7 @@ static void ui_toast(float secs, const char* fmt, ...)
 }
 
 // =============== Events ===================
-typedef enum { EV_PICKUP, EV_TRY_BUY, EV_ASSET_DEBUG_PRINT } ev_type_t;
+typedef enum { EV_TRY_BUY } ev_type_t;
 typedef struct { ev_type_t type; ecs_entity_t a, b; } ev_t;
 
 #define EV_MAX 128
@@ -79,12 +81,70 @@ static void ev_emit(ev_t e){
     }
 }
 
+// =============== Proximity View (transient each tick) =============
+#define PROX_MAX ECS_MAX_ENTITIES
+
+static prox_pair_t prox_curr[PROX_MAX];
+static prox_pair_t prox_prev[PROX_MAX];
+static int         prox_curr_count = 0;
+static int         prox_prev_count = 0;
+
+static inline bool prox_pair_eq(prox_pair_t x, prox_pair_t y){
+    return x.a.idx==y.a.idx && x.a.gen==y.a.gen &&
+           x.b.idx==y.b.idx && x.b.gen==y.b.gen;
+}
+static bool prox_contains(prox_pair_t* arr, int n, prox_pair_t p){
+    for (int i=0;i<n;++i){
+        if (arr[i].a.idx==p.a.idx && arr[i].a.gen==p.a.gen &&
+            arr[i].b.idx==p.b.idx && arr[i].b.gen==p.b.gen) return true;
+    }
+    return false;
+}
+
+typedef struct { int i; } prox_iter_t;
+typedef struct { ecs_entity_t a, b; } prox_view_t;
+
+prox_iter_t prox_stay_begin(void){ return (prox_iter_t){ .i = -1 }; }
+bool prox_stay_next(prox_iter_t* it, prox_view_t* out){
+    int i = it->i + 1;
+    while (i < prox_curr_count){
+        if (ecs_alive_handle(prox_curr[i].a) && ecs_alive_handle(prox_curr[i].b)){
+            it->i = i;
+            *out = (prox_view_t){ prox_curr[i].a, prox_curr[i].b };
+            return true;
+        }
+        ++i;
+    }
+    return false;
+}
+
+prox_iter_t prox_enter_begin(void){ return (prox_iter_t){ .i = -1 }; }
+bool prox_enter_next(prox_iter_t* it, prox_view_t* out){
+    for (int i = it->i + 1; i < prox_curr_count; ++i){
+        if (!ecs_alive_handle(prox_curr[i].a) || !ecs_alive_handle(prox_curr[i].b)) continue;
+        if (!prox_contains(prox_prev, prox_prev_count, prox_curr[i])){
+            it->i = i; *out = (prox_view_t){ prox_curr[i].a, prox_curr[i].b }; return true;
+        }
+    }
+    return false;
+}
+
+prox_iter_t prox_exit_begin(void){ return (prox_iter_t){ .i = -1 }; }
+bool prox_exit_next(prox_iter_t* it, prox_view_t* out){
+    for (int i = it->i + 1; i < prox_prev_count; ++i){
+        if (!ecs_alive_handle(prox_prev[i].a) || !ecs_alive_handle(prox_prev[i].b)) continue;
+        if (!prox_contains(prox_curr, prox_curr_count, prox_prev[i])){
+            it->i = i; *out = (prox_view_t){ prox_prev[i].a, prox_prev[i].b }; return true;
+        }
+    }
+    return false;
+}
+
 // =============== Helpers ==================
 static inline int ent_index_checked(ecs_entity_t e) {
     return (e.idx < ECS_MAX_ENTITIES && ecs_gen[e.idx] == e.gen && e.gen != 0)
         ? (int)e.idx : -1;
 }
-// Fast unchecked index when you already validated
 static inline int ent_index_unchecked(ecs_entity_t e){ return (int)e.idx; }
 
 static inline bool ecs_alive_idx(int i){ return ecs_gen[i] != 0; }
@@ -127,15 +187,16 @@ void ecs_init(void){
     memset(ecs_mask, 0, sizeof(ecs_mask));
     memset(ecs_gen,  0, sizeof(ecs_gen));
     memset(ecs_next_gen, 0, sizeof(ecs_next_gen));
-    // Build free-list: all slots free
     free_top = 0;
-    for (int i = ECS_MAX_ENTITIES - 1; i >= 0; --i) { // push in reverse for cachey low indices first
+    for (int i = ECS_MAX_ENTITIES - 1; i >= 0; --i) {
         free_stack[free_top++] = i;
     }
 
     ev_count = 0;
     ui_toast_timer = 0.0f;
     ui_toast_text[0] = '\0';
+
+    prox_curr_count = prox_prev_count = 0;
 }
 void ecs_shutdown(void){ /* no heap to free currently */ }
 void ecs_set_world_size(int w, int h){ g_worldW = w; g_worldH = h; }
@@ -146,8 +207,8 @@ ecs_entity_t ecs_create(void)
     if (free_top == 0) return ecs_null();
     int idx = free_stack[--free_top];
     uint32_t g = ecs_next_gen[idx];
-    if (g == 0) g = 1;                    // first time ever
-    ecs_gen[idx] = g;                     // alive with current generation
+    if (g == 0) g = 1;
+    ecs_gen[idx] = g;
     ecs_mask[idx] = 0;
     return (ecs_entity_t){ (uint32_t)idx, g };
 }
@@ -156,11 +217,11 @@ void ecs_destroy(ecs_entity_t e)
 {
     int idx = ent_index_checked(e);
     if (idx < 0) return;
-    cmp_sprite_release_idx(idx);          //Release texture from asset manager
+    cmp_sprite_release_idx(idx);
     uint32_t g = ecs_gen[idx];
-    g = (g + 1) ? (g + 1) : 1;            // bump; avoid 0
-    ecs_gen[idx] = 0;                     // dead
-    ecs_next_gen[idx] = g;                // remember next live generation
+    g = (g + 1) ? (g + 1) : 1;
+    ecs_gen[idx] = 0;
+    ecs_next_gen[idx] = g;
     ecs_mask[idx] = 0;
     free_stack[free_top++] = idx;
 }
@@ -186,7 +247,6 @@ void cmp_add_sprite_handle(ecs_entity_t e, tex_handle_t h, rectf src, float ox, 
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
-    // add ref for this handle
     if (asset_texture_valid(h)) asset_addref_texture(h);
     cmp_spr[i] = (cmp_sprite_t){ h, src, ox, oy };
     ecs_mask[i] |= CMP_SPR;
@@ -194,9 +254,8 @@ void cmp_add_sprite_handle(ecs_entity_t e, tex_handle_t h, rectf src, float ox, 
 
 void cmp_add_sprite_path(ecs_entity_t e, const char* path, rectf src, float ox, float oy)
 {
-    tex_handle_t h = asset_acquire_texture(path); // +1 ref (or cached)
+    tex_handle_t h = asset_acquire_texture(path);
     cmp_add_sprite_handle(e, h, src, ox, oy);
-    //release because 2 lines above add 2 to ref count, which is bug
     asset_release_texture(h);
 }
 
@@ -205,6 +264,23 @@ void tag_add_player(ecs_entity_t e)
     int i = ent_index_checked(e);
     if (i < 0) return;
     ecs_mask[i] |= TAG_PLAYER;
+}
+
+void cmp_add_trigger(ecs_entity_t e, float pad, uint32_t target_mask){
+    int i = ent_index_checked(e); if (i < 0) return;
+    cmp_trigger[i] = (cmp_trigger_t){ pad, target_mask };
+    ecs_mask[i] |= CMP_TRIGGER;
+}
+
+void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state){
+    int i = ent_index_checked(e); if (i<0) return;
+    strncpy(cmp_billboard[i].text, text, sizeof(cmp_billboard[i].text)-1);
+    cmp_billboard[i].text[sizeof(cmp_billboard[i].text)-1] = '\0';
+    cmp_billboard[i].y_offset = y_off;
+    cmp_billboard[i].linger = linger;
+    cmp_billboard[i].timer = 0;
+    cmp_billboard[i].state = state;
+    ecs_mask[i] |= CMP_BILLBOARD;
 }
 
 void cmp_add_inventory(ecs_entity_t e)
@@ -247,7 +323,6 @@ static void sys_input(float dt, const input_t* in)
     for (int e=0;e<ECS_MAX_ENTITIES;++e){
         if(!ecs_alive_idx(e)) continue;
         if ((ecs_mask[e]&(TAG_PLAYER|CMP_VEL))==(TAG_PLAYER|CMP_VEL)){
-            // uses your input_t exactly
             cmp_vel[e].x = in->moveX * SPEED;
             cmp_vel[e].y = in->moveY * SPEED;
             break;
@@ -286,112 +361,181 @@ static void sys_bounds(void)
     }
 }
 
-static void sys_proximity(const input_t* in)
+static void sys_proximity_build_view(void)
 {
-    ecs_entity_t player_handle = find_player_handle();
-    int player = ent_index_checked(player_handle);
-    if(player<0) return;
-    // TODO: REMOVE this and put in proper debug handle system
-    if(input_pressed(in, BTN_ASSET_DEBUG_PRINT))
-    {
-        ev_emit((ev_t){EV_ASSET_DEBUG_PRINT, find_player_handle(), find_player_handle()});
+    // swap buffers: prev <- curr; clear curr
+    if (prox_curr_count > 0) {
+        memcpy(prox_prev, prox_curr, sizeof(prox_pair_t)*prox_curr_count);
     }
-    //
-    const float PICKUP_PAD = 2.0f;
-    for (int it=0; it<ECS_MAX_ENTITIES; ++it){
-        if(!ecs_alive_idx(it)) continue;
-        if((ecs_mask[it] & (CMP_ITEM|CMP_COL)) != (CMP_ITEM|CMP_COL)) continue;
-        if(cmp_item[it].kind != ITEM_COIN) continue;
+    prox_prev_count = prox_curr_count;
+    prox_curr_count = 0;
 
-        if ((ecs_mask[player] & CMP_COL) && col_overlap_padded(player, it, PICKUP_PAD)){
-            ev_emit((ev_t){EV_PICKUP, player_handle, handle_from_index(it)});
-        }
-    }
+    for (int a=0; a<ECS_MAX_ENTITIES; ++a){
+        if(!ecs_alive_idx(a)) continue;
+        if ((ecs_mask[a] & (CMP_POS|CMP_COL|CMP_TRIGGER)) != (CMP_POS|CMP_COL|CMP_TRIGGER)) continue;
 
-    if (input_pressed(in, BTN_INTERACT)){
-        const float INTERACT_PAD = 30.0f;
-        for(int v=0; v<ECS_MAX_ENTITIES; ++v){
-            if(!ecs_alive_idx(v)) continue;
-            if(!(ecs_mask[v]&CMP_VENDOR)) continue;
-            if(!(ecs_mask[v]&CMP_COL) || !(ecs_mask[player]&CMP_COL)) continue;
-            if (col_overlap_padded(player, v, INTERACT_PAD)){
-                ev_emit((ev_t){EV_TRY_BUY, player_handle, handle_from_index(v)});
-                break;
+        const cmp_trigger_t* tr = &cmp_trigger[a];
+
+        for (int b=0; b<ECS_MAX_ENTITIES; ++b){
+            if (b==a || !ecs_alive_idx(b)) continue;
+            if ((ecs_mask[b] & tr->target_mask) != tr->target_mask) continue;
+            if ((ecs_mask[b] & (CMP_POS|CMP_COL)) != (CMP_POS|CMP_COL)) continue;
+
+            if (col_overlap_padded(a, b, tr->pad)){
+                if (prox_curr_count < PROX_MAX){
+                    prox_curr[prox_curr_count++] =
+                        (prox_pair_t){ handle_from_index(a), handle_from_index(b) };
+                }
             }
         }
     }
 }
 
-static void sys_events(void)
+static void sys_billboards(float dt)
 {
-    for(int i=0;i<ev_count;++i){
-        ev_t ev = ev_queue[i];
-    //TODO: Annoying i have to have 2 valid entities have to use player 2 times just to have valid on asset debug
-        int ia = ent_index_checked(ev.a);
-        int ib = ent_index_checked(ev.b);
-        if (ia < 0 || ib < 0) continue; // stale, ignore TODO: Does this leak
-        LOGC(LOGCAT_ECS, LOG_LVL_INFO, "Handle event:\t type=%d a=(%u,%u) b=(%u,%u)",
-                 ev.type, ev.a.idx, ev.a.gen, ev.b.idx, ev.b.gen);
-        switch(ev.type){
-            case EV_ASSET_DEBUG_PRINT:
-                asset_reload_all();
-                asset_log_debug();
-                break;
-            case EV_PICKUP:
-                if((ecs_mask[ia]&CMP_INV) && (ecs_mask[ib]&CMP_ITEM) && cmp_item[ib].kind==ITEM_COIN){
-                    cmp_inv[ia].coins += 1;
-                    ecs_destroy(ev.b);
-                    ui_toast(1.0f, "Picked up a coin! (%d)", cmp_inv[ia].coins);
-                }
-                break;
-
-            case EV_TRY_BUY:
-                if((ecs_mask[ib]&CMP_VENDOR)==0) break;
-                if((ecs_mask[ia]&CMP_INV)==0) break;
-                {
-                    cmp_vendor_t v = cmp_vendor[ib];
-                    cmp_inventory_t *pInv = &cmp_inv[ia];
-                    if(v.sells==ITEM_HAT){
-                        if(pInv->hasHat){
-                            ui_toast(1.5f, "You already have a hat.");
-                            break;
-                        }
-                        if(pInv->coins >= v.price){
-                            pInv->coins -= v.price;
-                            pInv->hasHat = true;
-
-                            if ((ecs_mask[ia] & CMP_SPR)){
-                                if (asset_texture_valid(cmp_spr[ia].tex)) asset_release_texture(cmp_spr[ia].tex);
-                                tex_handle_t hatTexture = asset_acquire_texture("assets/player_hat.png");
-                                cmp_spr[ia].tex = hatTexture;
-
-                                int w=0, h=0;
-                                asset_texture_size(hatTexture, &w, &h);
-                                cmp_spr[ia].src = rectf_xywh(0,0,(float)w,(float)h);
-                                cmp_spr[ia].ox  = w * 0.5f;
-                                cmp_spr[ia].oy  = h * 0.5f;
-                            }
-                            ui_toast(1.5f, "Bought hat for %d coins!", v.price);
-                        } else {
-                            ui_toast(1.5f, "Need %d coins for hat (you have %d).", v.price, pInv->coins);
-                        }
-                    }
-                }
-                break;
+    // decay all
+    for (int i=0;i<ECS_MAX_ENTITIES;++i){
+        if (!ecs_alive_idx(i) || !(ecs_mask[i]&CMP_BILLBOARD)) continue;
+        if (cmp_billboard[i].timer > 0) {
+            cmp_billboard[i].timer -= dt;
+            if (cmp_billboard[i].timer < 0) cmp_billboard[i].timer = 0;
         }
     }
-    ev_count = 0;
+    // refresh for any (A,B) where A owns the billboard and is currently near B
+    prox_iter_t it = prox_stay_begin(); prox_view_t v;
+    while (prox_stay_next(&it, &v)){
+        int a = ent_index_checked(v.a);
+        if (a >= 0 && (ecs_mask[a] & CMP_BILLBOARD)){
+            cmp_billboard[a].timer = cmp_billboard[a].linger; // keep it alive while near
+        }
+    }
+}
+
+// pick up coins on proximity ENTER (player with inventory vs item coin)
+static void sys_pickups_from_proximity(void)
+{
+    prox_iter_t it = prox_enter_begin(); prox_view_t v;
+    while (prox_enter_next(&it, &v)){
+        int ia = ent_index_checked(v.a);
+        int ib = ent_index_checked(v.b);
+        if (ia<0 || ib<0) continue;
+        if ((ecs_mask[ia]&CMP_INV) && (ecs_mask[ib]&CMP_ITEM) && cmp_item[ib].kind==ITEM_COIN){
+            cmp_inv[ia].coins += 1;
+            ecs_destroy(v.b);
+            ui_toast(1.0f, "Picked up a coin! (%d)", cmp_inv[ia].coins);
+        }
+    }
+}
+
+static void try_buy_hat(ecs_entity_t player, ecs_entity_t vendor)
+{
+    int ia = ent_index_checked(player);
+    int ib = ent_index_checked(vendor);
+    if((ecs_mask[ib]&CMP_VENDOR)==0) return;
+    if((ecs_mask[ia]&CMP_INV)==0) return;
+    {
+        cmp_vendor_t v = cmp_vendor[ib];
+        cmp_inventory_t *pInv = &cmp_inv[ia];
+        if(v.sells==ITEM_HAT){
+            if(pInv->hasHat){
+                ui_toast(1.5f, "You already have a hat.");
+                return;
+            }
+            if(pInv->coins >= v.price){
+                pInv->coins -= v.price;
+                pInv->hasHat = true;
+
+                if ((ecs_mask[ia] & CMP_SPR)){
+                    if (asset_texture_valid(cmp_spr[ia].tex)) asset_release_texture(cmp_spr[ia].tex);
+                    tex_handle_t hatTexture = asset_acquire_texture("assets/player_hat.png");
+                    cmp_spr[ia].tex = hatTexture;
+
+                    int w=0, h=0;
+                    asset_texture_size(hatTexture, &w, &h);
+                    cmp_spr[ia].src = rectf_xywh(0,0,(float)w,(float)h);
+                    cmp_spr[ia].ox  = w * 0.5f;
+                    cmp_spr[ia].oy  = h * 0.5f;
+                }
+                ui_toast(1.5f, "Bought hat for %d coins!", v.price);
+            } else {
+                ui_toast(1.5f, "Need %d coins for hat (you have %d).", v.price, pInv->coins);
+            }
+        }
+    }
+}
+
+// Interaction (E to buy) — consumer over prox_stay; picks nearest vendor
+static void sys_interact_from_proximity(const input_t* in)
+{
+    if (!input_pressed(in, BTN_INTERACT)) return;
+    ecs_entity_t player_h = find_player_handle();
+    int p = ent_index_checked(player_h);
+    if (p < 0 || !(ecs_mask[p] & (CMP_COL | CMP_POS))) return;
+
+    float best_d2 = INFINITY;
+    int   best_vendor = -1;
+    prox_iter_t it = prox_stay_begin();
+    prox_view_t v;
+    while (prox_stay_next(&it, &v)) {
+        int ia = ent_index_checked(v.a);
+        int ib = ent_index_checked(v.b);
+        if (ia < 0 || ib < 0) continue;
+
+        // Map the pair to (vendor, player) regardless of order
+        int vendor = -1;
+        int player = -1;
+
+        if ((ecs_mask[ia] & CMP_VENDOR) && ib == p) {
+            vendor = ia; player = ib;
+        } else if ((ecs_mask[ib] & CMP_VENDOR) && ia == p) {
+            vendor = ib; player = ia;
+        } else {
+            continue; // not a (vendor, this player) pair
+        }
+
+        //both have a positions
+        if ((ecs_mask[vendor] & CMP_POS) == 0 || (ecs_mask[player] & CMP_POS) == 0) continue;
+
+        // Track nearest vendor (distance squared to avoid sqrt)
+        float dx = cmp_pos[vendor].x - cmp_pos[player].x;
+        float dy = cmp_pos[vendor].y - cmp_pos[player].y;
+        float d2 = dx*dx + dy*dy;
+
+        if (d2 < best_d2) {
+            best_d2 = d2;
+            best_vendor = vendor;
+        }
+    }
+
+    if (best_vendor >= 0) {
+        try_buy_hat(player_h, handle_from_index(best_vendor));
+    }
+}
+
+void sys_debug_binds(const input_t* in)
+{
+    if(input_pressed(in, BTN_ASSET_DEBUG_PRINT)) {
+        asset_reload_all();
+        asset_log_debug();
+  }
 }
 
 // ========= Public: update/iterators ============
-void ecs_tick(float fixed_dt, const input_t* in)
+void ecs_tick(float dt, const input_t* in)
 {
-    if(ui_toast_timer > 0.0f) ui_toast_timer -= fixed_dt;
-    sys_input(fixed_dt, in);
-    sys_physics(fixed_dt);
+    if(ui_toast_timer > 0) ui_toast_timer -= dt;
+
+    sys_input(dt, in);
+    sys_physics(dt);
     sys_bounds();
-    sys_proximity(in);
-    sys_events();
+
+    sys_proximity_build_view();   // PRODUCER: builds prox_curr/prox_prev
+
+    sys_pickups_from_proximity(); // CONSUMER: coin pickup on enter
+    sys_billboards(dt);           // CONSUMER: billboard timers refresh while near
+    sys_interact_from_proximity(in);     // CONSUMER: E-to-buy input
+
+    sys_debug_binds(in);
 }
 
 // --- SPRITES ---
@@ -430,6 +574,35 @@ bool ecs_colliders_next(ecs_collider_iter_t* it, ecs_collider_view_t* out)
         *out = (ecs_collider_view_t){
             .x = cmp_pos[i].x, .y = cmp_pos[i].y,
             .hx = cmp_col[i].hx, .hy = cmp_col[i].hy,
+        };
+        return true;
+    }
+    return false;
+}
+
+// --- BILLBOARDS (iterator for renderer) ---
+ecs_billboard_iter_t ecs_billboards_begin(void) { return (ecs_billboard_iter_t){ .i = -1 }; }
+bool ecs_billboards_next(ecs_billboard_iter_t* it, ecs_billboard_view_t* out)
+{
+    for (int i = it->i + 1; i < ECS_MAX_ENTITIES; ++i) {
+        if (!ecs_alive_idx(i)) continue;
+        if ((ecs_mask[i] & (CMP_POS|CMP_BILLBOARD)) != (CMP_POS|CMP_BILLBOARD)) continue;
+        if (cmp_billboard[i].state != BILLBOARD_ACTIVE) continue;
+        if (cmp_billboard[i].timer <= 0.0f) continue;
+
+        it->i = i;
+
+        float a = 1.0f;
+        if (cmp_billboard[i].linger > 0.0f) {
+            a = clampf(cmp_billboard[i].timer / cmp_billboard[i].linger, 0.0f, 1.0f);
+        }
+
+        *out = (ecs_billboard_view_t){
+            .x = cmp_pos[i].x,
+            .y = cmp_pos[i].y,
+            .y_offset = cmp_billboard[i].y_offset,
+            .alpha = a,
+            .text = cmp_billboard[i].text
         };
         return true;
     }
