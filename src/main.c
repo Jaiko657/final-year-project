@@ -9,12 +9,6 @@
 #include <stdlib.h>  // for qsort
 
 /*
- * TODO: In ecs.c there is problem that the new proximity system is not working
- * For the purchase, the event being created has player as both who and what
- *Issue is that need to understand how that system works better then fix the issue
- * */
-
-/*
  * TODO:
  * - figure out pixel scaling sub pixel movements (allow entities to be off the scale, sub pixel position)
 */

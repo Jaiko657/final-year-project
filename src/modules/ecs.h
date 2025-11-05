@@ -4,6 +4,7 @@
 #include "../includes/engine_types.h"
 #include "input.h"
 #include "asset.h"
+#include "ecs_systems.h"
 
 // =============== Bitmasks / Tags =========
 #define CMP_POS       (1<<0)

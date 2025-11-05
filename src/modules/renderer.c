@@ -21,7 +21,8 @@ static int cmp_item(const void* a, const void* b) {
 }
 
 static unsigned char u8(float x){
-    if (x < 0.f) x = 0.f; if (x > 1.f) x = 1.f;
+    if (x < 0.f) x = 0.f;
+    if (x > 1.f) x = 1.f;
     return (unsigned char)(x * 255.0f + 0.5f);
 }
 
@@ -63,21 +64,6 @@ static void draw_world_and_ui(void) {
 
         DrawTexturePro(t, src, dst, origin, 0.0f, WHITE);
     }
-
-    /* ===== vendor hint =====
-    {
-        int vx, vy; const char* msg = NULL;
-        if (ecs_vendor_hint_is_active(&vx, &vy, &msg)) {
-            const int fs = 18;
-            int tw = MeasureText(msg, fs);
-            int x = vx - tw/2;
-            int y = vy - 32;
-
-            DrawRectangle(x-6, y-6, tw+12, 26, (Color){0,0,0,160});
-            DrawText(msg, x, y, fs, RAYWHITE);
-        }
-    }
-*/
 
     // ===== floating billboards (from proximity) =====
     {

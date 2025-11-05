@@ -23,8 +23,8 @@ typedef struct { tex_handle_t tex; rectf src; float ox, oy; } cmp_sprite_t;
 typedef struct { float hx, hy; } cmp_collider_t;
 
 typedef struct {
-    float    pad;           // detection padding (AABB expand)
-    uint32_t target_mask;   // required mask bits on the other entity
+    float    pad;
+    uint32_t target_mask;
 } cmp_trigger_t;
 
 // temp gameplay components kept for now
@@ -34,8 +34,8 @@ typedef struct { item_kind_t sells; int price; } cmp_vendor_t;
 
 // =============== ECS Storage =============
 static uint32_t        ecs_mask[ECS_MAX_ENTITIES];
-static uint32_t        ecs_gen[ECS_MAX_ENTITIES];       // 0 is dead; >0 is live generation
-static uint32_t        ecs_next_gen[ECS_MAX_ENTITIES];  // next generation to use when resurrecting
+static uint32_t        ecs_gen[ECS_MAX_ENTITIES];
+static uint32_t        ecs_next_gen[ECS_MAX_ENTITIES];
 static cmp_position_t  cmp_pos[ECS_MAX_ENTITIES];
 static cmp_velocity_t  cmp_vel[ECS_MAX_ENTITIES];
 static cmp_sprite_t    cmp_spr[ECS_MAX_ENTITIES];
@@ -63,22 +63,6 @@ static void ui_toast(float secs, const char* fmt, ...)
     vsnprintf(ui_toast_text, sizeof(ui_toast_text), fmt, ap);
     va_end(ap);
     ui_toast_timer = secs;
-}
-
-// =============== Events ===================
-typedef enum { EV_TRY_BUY } ev_type_t;
-typedef struct { ev_type_t type; ecs_entity_t a, b; } ev_t;
-
-#define EV_MAX 128
-static ev_t ev_queue[EV_MAX];
-static int  ev_count = 0;
-
-static void ev_emit(ev_t e){
-    if (ev_count < EV_MAX) {
-        ev_queue[ev_count++] = e;
-        LOGC(LOGCAT_ECS, LOG_LVL_INFO, "Emit event:\t type=%d a=(%u,%u) b=(%u,%u)",
-                 e.type, e.a.idx, e.a.gen, e.b.idx, e.b.gen);
-    }
 }
 
 // =============== Proximity View (transient each tick) =============
@@ -183,6 +167,8 @@ static void cmp_sprite_release_idx(int i){
 }
 
 // =============== Public: lifecycle ========
+static void ecs_register_builtin_systems(void);
+
 void ecs_init(void){
     memset(ecs_mask, 0, sizeof(ecs_mask));
     memset(ecs_gen,  0, sizeof(ecs_gen));
@@ -192,11 +178,13 @@ void ecs_init(void){
         free_stack[free_top++] = i;
     }
 
-    ev_count = 0;
     ui_toast_timer = 0.0f;
     ui_toast_text[0] = '\0';
 
     prox_curr_count = prox_prev_count = 0;
+
+    ecs_systems_init();
+    ecs_register_builtin_systems();
 }
 void ecs_shutdown(void){ /* no heap to free currently */ }
 void ecs_set_world_size(int w, int h){ g_worldW = w; g_worldH = h; }
@@ -363,7 +351,6 @@ static void sys_bounds(void)
 
 static void sys_proximity_build_view(void)
 {
-    // swap buffers: prev <- curr; clear curr
     if (prox_curr_count > 0) {
         memcpy(prox_prev, prox_curr, sizeof(prox_pair_t)*prox_curr_count);
     }
@@ -393,7 +380,6 @@ static void sys_proximity_build_view(void)
 
 static void sys_billboards(float dt)
 {
-    // decay all
     for (int i=0;i<ECS_MAX_ENTITIES;++i){
         if (!ecs_alive_idx(i) || !(ecs_mask[i]&CMP_BILLBOARD)) continue;
         if (cmp_billboard[i].timer > 0) {
@@ -401,17 +387,15 @@ static void sys_billboards(float dt)
             if (cmp_billboard[i].timer < 0) cmp_billboard[i].timer = 0;
         }
     }
-    // refresh for any (A,B) where A owns the billboard and is currently near B
     prox_iter_t it = prox_stay_begin(); prox_view_t v;
     while (prox_stay_next(&it, &v)){
         int a = ent_index_checked(v.a);
         if (a >= 0 && (ecs_mask[a] & CMP_BILLBOARD)){
-            cmp_billboard[a].timer = cmp_billboard[a].linger; // keep it alive while near
+            cmp_billboard[a].timer = cmp_billboard[a].linger;
         }
     }
 }
 
-// pick up coins on proximity ENTER (player with inventory vs item coin)
 static void sys_pickups_from_proximity(void)
 {
     prox_iter_t it = prox_enter_begin(); prox_view_t v;
@@ -464,7 +448,6 @@ static void try_buy_hat(ecs_entity_t player, ecs_entity_t vendor)
     }
 }
 
-// Interaction (E to buy) — consumer over prox_stay; picks nearest vendor
 static void sys_interact_from_proximity(const input_t* in)
 {
     if (!input_pressed(in, BTN_INTERACT)) return;
@@ -481,7 +464,6 @@ static void sys_interact_from_proximity(const input_t* in)
         int ib = ent_index_checked(v.b);
         if (ia < 0 || ib < 0) continue;
 
-        // Map the pair to (vendor, player) regardless of order
         int vendor = -1;
         int player = -1;
 
@@ -490,13 +472,11 @@ static void sys_interact_from_proximity(const input_t* in)
         } else if ((ecs_mask[ib] & CMP_VENDOR) && ia == p) {
             vendor = ib; player = ia;
         } else {
-            continue; // not a (vendor, this player) pair
+            continue;
         }
 
-        //both have a positions
         if ((ecs_mask[vendor] & CMP_POS) == 0 || (ecs_mask[player] & CMP_POS) == 0) continue;
 
-        // Track nearest vendor (distance squared to avoid sqrt)
         float dx = cmp_pos[vendor].x - cmp_pos[player].x;
         float dy = cmp_pos[vendor].y - cmp_pos[player].y;
         float d2 = dx*dx + dy*dy;
@@ -525,17 +505,11 @@ void ecs_tick(float dt, const input_t* in)
 {
     if(ui_toast_timer > 0) ui_toast_timer -= dt;
 
-    sys_input(dt, in);
-    sys_physics(dt);
-    sys_bounds();
-
-    sys_proximity_build_view();   // PRODUCER: builds prox_curr/prox_prev
-
-    sys_pickups_from_proximity(); // CONSUMER: coin pickup on enter
-    sys_billboards(dt);           // CONSUMER: billboard timers refresh while near
-    sys_interact_from_proximity(in);     // CONSUMER: E-to-buy input
-
-    sys_debug_binds(in);
+    ecs_run_phase(PHASE_INPUT,       dt, in);
+    ecs_run_phase(PHASE_PHYSICS,     dt, in);
+    ecs_run_phase(PHASE_SIM_PRE,     dt, in);
+    ecs_run_phase(PHASE_SIM_POST,    dt, in);
+    ecs_run_phase(PHASE_DEBUG,       dt, in);
 }
 
 // --- SPRITES ---
@@ -645,4 +619,31 @@ void ecs_get_player_stats(int* outCoins, bool* outHasHat)
     if (p >= 0 && (ecs_mask[p]&CMP_INV)) { coins = cmp_inv[p].coins; hat = cmp_inv[p].hasHat; }
     if (outCoins) *outCoins = coins;
     if (outHasHat) *outHasHat = hat;
+}
+
+// =============== Adapters for system registry =========
+static void sys_input_adapt(float dt, const input_t* in) { sys_input(dt, in); }
+static void sys_physics_adapt(float dt, const input_t* in) { (void)in; sys_physics(dt); }
+static void sys_bounds_adapt(float dt, const input_t* in) { (void)dt; (void)in; sys_bounds(); }
+static void sys_prox_build_adapt(float dt, const input_t* in) { (void)dt; (void)in; sys_proximity_build_view(); }
+static void sys_billboards_adapt(float dt, const input_t* in) { (void)in; sys_billboards(dt); }
+static void sys_pickups_adapt(float dt, const input_t* in) { (void)dt; (void)in; sys_pickups_from_proximity(); }
+static void sys_interact_adapt(float dt, const input_t* in) { (void)dt; sys_interact_from_proximity(in); }
+static void sys_debug_binds_adapt(float dt, const input_t* in) { (void)dt; sys_debug_binds(in); }
+
+// =============== Registration =========
+static void ecs_register_builtin_systems(void)
+{
+    ecs_register_system(PHASE_INPUT,    100, sys_input_adapt, "input");
+
+    ecs_register_system(PHASE_PHYSICS,  100, sys_physics_adapt, "physics");
+    ecs_register_system(PHASE_PHYSICS,  200, sys_bounds_adapt, "bounds");
+
+    ecs_register_system(PHASE_SIM_PRE,  100, sys_prox_build_adapt, "proximity_view");
+
+    ecs_register_system(PHASE_SIM_POST, 100, sys_pickups_adapt, "pickups");
+    ecs_register_system(PHASE_SIM_POST, 200, sys_billboards_adapt, "billboards");
+    ecs_register_system(PHASE_SIM_POST, 300, sys_interact_adapt, "interact");
+
+    ecs_register_system(PHASE_DEBUG,    100, sys_debug_binds_adapt, "debug_binds");
 }
