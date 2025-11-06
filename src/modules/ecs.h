@@ -10,7 +10,7 @@
 #define CMP_POS       (1<<0)
 #define CMP_VEL       (1<<1)
 #define CMP_SPR       (1<<2)
-#define TAG_PLAYER    (1<<4)
+#define CMP_PLAYER    (1<<4)
 #define CMP_ITEM      (1<<5)
 #define CMP_INV       (1<<6)
 #define CMP_VENDOR    (1<<7)
@@ -30,6 +30,18 @@ typedef struct {
     float x, y; // center
     float hx, hy; // half extents
 } ecs_collider_view_t;
+
+typedef struct {
+    float x, y; // center
+    float hx, hy; // half extents NEED THESE BECAUSE TRIGGER IS COLLIDER PLUS PADDING
+    float pad; // AABB padding from collider
+} ecs_trigger_view_t;
+
+
+typedef struct {
+    int count[100]; // If i use this more than hundred times im a idiot and this can blow up who cares
+    int num;
+} ecs_count_result_t;
 
 // ====== Public constants / types ======
 #define ECS_MAX_ENTITIES 1024
@@ -62,7 +74,7 @@ void cmp_add_position (ecs_entity_t e, float x, float y);
 void cmp_add_velocity (ecs_entity_t e, float x, float y);
 void cmp_add_sprite_handle(ecs_entity_t e, tex_handle_t h, rectf src, float ox, float oy);
 void cmp_add_sprite_path  (ecs_entity_t e, const char* path, rectf src, float ox, float oy);
-void tag_add_player   (ecs_entity_t e);
+void cmp_add_player   (ecs_entity_t e);
 void cmp_add_trigger(ecs_entity_t e, float pad, uint32_t target_mask);
 void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state);
 void cmp_add_inventory(ecs_entity_t e);
@@ -84,6 +96,11 @@ typedef struct { int i; } ecs_collider_iter_t;
 ecs_collider_iter_t ecs_colliders_begin(void);
 bool ecs_colliders_next(ecs_collider_iter_t* it, ecs_collider_view_t* out);
 
+// --- collider iterator ---
+typedef struct { int i; } ecs_trigger_iter_t;
+ecs_trigger_iter_t ecs_triggers_begin(void);
+bool ecs_triggers_next(ecs_trigger_iter_t* it, ecs_trigger_view_t* out);
+
 typedef struct { int i; } ecs_billboard_iter_t;
 typedef struct { float x,y, y_offset, alpha; const char* text; } ecs_billboard_view_t;
 ecs_billboard_iter_t ecs_billboards_begin(void);
@@ -91,6 +108,7 @@ bool ecs_billboards_next(ecs_billboard_iter_t* it, ecs_billboard_view_t* out);
 
 // ====== HUD helpers ======
 void ecs_get_player_stats(int* outCoins, bool* outHasHat);
+ecs_count_result_t ecs_count_entities(const uint32_t* masks, int num_masks);
 // toast
 bool        ecs_toast_is_active(void);
 const char* ecs_toast_get_text(void);

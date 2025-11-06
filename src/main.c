@@ -31,7 +31,7 @@ int init_entities(int W, int H)
     cmp_add_sprite_handle(player, tex_player,
         (rectf){0,0,(float)pw,(float)ph},
         pw*0.5f, ph*0.5f);
-    tag_add_player(player);
+    cmp_add_player(player);
     cmp_add_inventory(player);
     cmp_add_size(player, 12.0f, 12.0f);
     cmp_add_trigger(player, 2.0f, CMP_ITEM | CMP_COL);
@@ -62,7 +62,7 @@ int init_entities(int W, int H)
     // Example: add a billboard to vendor that shows when player is near
     cmp_add_billboard(npc, "Press E to buy hat", -64.0f, 0.10f, BILLBOARD_ACTIVE);
     // And trigger so vendor reacts to player proximity
-    cmp_add_trigger(npc, 30.0f, TAG_PLAYER | CMP_COL);
+    cmp_add_trigger(npc, 30.0f, CMP_PLAYER | CMP_COL);
 
     // Release setup refs (ECS added its own refs)
     asset_release_texture(tex_player);

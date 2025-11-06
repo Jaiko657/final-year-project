@@ -99,6 +99,20 @@ static void draw_world_and_ui(void) {
     }
 #endif
 
+#if DEBUG_TRIGGERS
+    // ===== trigger debug outlines =====
+    for (ecs_trigger_iter_t it = ecs_triggers_begin(); ; ) {
+        ecs_trigger_view_t c;
+        if (!ecs_triggers_next(&it, &c)) break;
+
+        int rx = (int)floorf(c.x - c.hx - c.pad);
+        int ry = (int)floorf(c.y - c.hy - c.pad);
+        int rw = (int)ceilf(2.f * c.hx + (2.f * c.pad));
+        int rh = (int)ceilf(2.f * c.hy + (2.f * c.pad));
+        DrawRectangleLines(rx, ry, rw, rh, GREEN);
+    }
+#endif
+
 #if DEBUG_FPS
     // ===== FPS overlay =====
     {

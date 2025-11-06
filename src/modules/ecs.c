@@ -137,7 +137,7 @@ static inline ecs_entity_t handle_from_index(int i){ return (ecs_entity_t){ (uin
 
 static ecs_entity_t find_player_handle(void){
     for(int i=0;i<ECS_MAX_ENTITIES;++i){
-        if(ecs_alive_idx(i) && (ecs_mask[i]&TAG_PLAYER)) {
+        if(ecs_alive_idx(i) && (ecs_mask[i]&CMP_PLAYER)) {
             return (ecs_entity_t){ (uint32_t)i, ecs_gen[i] };
         }
     }
@@ -147,15 +147,15 @@ static ecs_entity_t find_player_handle(void){
 static float clampf(float v, float a, float b){ return (v<a)?a:((v>b)?b:v); }
 
 static bool col_overlap_padded(int a, int b, float pad){
-    float ax=cmp_pos[a].x, ay=cmp_pos[a].y;
-    float bx=cmp_pos[b].x, by=cmp_pos[b].y;
+    float ax = cmp_pos[a].x, ay = cmp_pos[a].y;
+    float bx = cmp_pos[b].x, by = cmp_pos[b].y;
 
-    float ahx = (ecs_mask[a]&CMP_COL)? (cmp_col[a].hx+pad) : pad;
-    float ahy = (ecs_mask[a]&CMP_COL)? (cmp_col[a].hy+pad) : pad;
-    float bhx = (ecs_mask[b]&CMP_COL)? (cmp_col[b].hx+pad) : pad;
-    float bhy = (ecs_mask[b]&CMP_COL)? (cmp_col[b].hy+pad) : pad;
+    float ahx = (ecs_mask[a] & CMP_COL) ? (cmp_col[a].hx + pad) : pad;
+    float ahy = (ecs_mask[a] & CMP_COL) ? (cmp_col[a].hy + pad) : pad;
+    float bhx = (ecs_mask[b] & CMP_COL) ?  cmp_col[b].hx : 0.f;
+    float bhy = (ecs_mask[b] & CMP_COL) ?  cmp_col[b].hy : 0.f;
 
-    return fabsf(ax-bx) <= (ahx+bhx) && fabsf(ay-by) <= (ahy+bhy);
+    return fabsf(ax - bx) <= (ahx + bhx) && fabsf(ay - by) <= (ahy + bhy);
 }
 
 static void cmp_sprite_release_idx(int i){
@@ -247,11 +247,11 @@ void cmp_add_sprite_path(ecs_entity_t e, const char* path, rectf src, float ox, 
     asset_release_texture(h);
 }
 
-void tag_add_player(ecs_entity_t e)
+void cmp_add_player(ecs_entity_t e)
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
-    ecs_mask[i] |= TAG_PLAYER;
+    ecs_mask[i] |= CMP_PLAYER;
 }
 
 void cmp_add_trigger(ecs_entity_t e, float pad, uint32_t target_mask){
@@ -310,7 +310,7 @@ static void sys_input(float dt, const input_t* in)
     const float SPEED = 200.0f;
     for (int e=0;e<ECS_MAX_ENTITIES;++e){
         if(!ecs_alive_idx(e)) continue;
-        if ((ecs_mask[e]&(TAG_PLAYER|CMP_VEL))==(TAG_PLAYER|CMP_VEL)){
+        if ((ecs_mask[e]&(CMP_PLAYER|CMP_VEL))==(CMP_PLAYER|CMP_VEL)){
             cmp_vel[e].x = in->moveX * SPEED;
             cmp_vel[e].y = in->moveY * SPEED;
             break;
@@ -554,6 +554,35 @@ bool ecs_colliders_next(ecs_collider_iter_t* it, ecs_collider_view_t* out)
     return false;
 }
 
+// --- TRIGGERS ---
+ecs_trigger_iter_t ecs_triggers_begin(void) { return (ecs_trigger_iter_t){ .i = -1 }; }
+
+bool ecs_triggers_next(ecs_trigger_iter_t* it, ecs_trigger_view_t* out)
+{
+    for (int i = it->i + 1; i < ECS_MAX_ENTITIES; ++i) {
+        if (!ecs_alive_idx(i)) continue;
+        if ((ecs_mask[i] & (CMP_POS | CMP_TRIGGER)) != (CMP_POS | CMP_TRIGGER)) continue;
+
+        it->i = i;
+
+        float collider_hx = 0;
+        float collider_hy = 0;
+        if(ecs_mask[i] & CMP_COL) {
+
+            collider_hx = cmp_col[i].hx;
+            collider_hy = cmp_col[i].hy;
+        }
+
+        *out = (ecs_trigger_view_t){
+            .x = cmp_pos[i].x, .y = cmp_pos[i].y,
+            .hx = collider_hx, .hy = collider_hy,
+            .pad = cmp_trigger[i].pad,
+        };
+        return true;
+    }
+    return false;
+}
+
 // --- BILLBOARDS (iterator for renderer) ---
 ecs_billboard_iter_t ecs_billboards_begin(void) { return (ecs_billboard_iter_t){ .i = -1 }; }
 bool ecs_billboards_next(ecs_billboard_iter_t* it, ecs_billboard_view_t* out)
@@ -610,6 +639,24 @@ bool ecs_vendor_hint_is_active(int* out_x, int* out_y, const char** out_text)
     return false;
 }
 
+ecs_count_result_t ecs_count_entities(const uint32_t* masks, int num_masks)
+{
+    // WARNING: this might blow up if more than 100 masks as ecs_count_result_t type is max size 100 in array
+    ecs_count_result_t result = { .num = num_masks };
+    memset(result.count, 0, sizeof(result.count));
+
+    for (int i = 0; i < ECS_MAX_ENTITIES; ++i) {
+        if (!ecs_alive_idx(i)) continue;
+        uint32_t mask = ecs_mask[i];
+        for (int j = 0; j < num_masks; ++j) {
+            if ((mask & masks[j]) == masks[j]) {
+                result.count[j]++;
+            }
+        }
+    }
+    return result;
+}
+
 void ecs_get_player_stats(int* outCoins, bool* outHasHat)
 {
     ecs_entity_t handle = find_player_handle();
@@ -634,7 +681,7 @@ static void sys_debug_binds_adapt(float dt, const input_t* in) { (void)dt; sys_d
 // =============== Registration =========
 static void ecs_register_builtin_systems(void)
 {
-    ecs_register_system(PHASE_INPUT,    100, sys_input_adapt, "input");
+    ecs_register_system(PHASE_INPUT,    0, sys_input_adapt, "input");
 
     ecs_register_system(PHASE_PHYSICS,  100, sys_physics_adapt, "physics");
     ecs_register_system(PHASE_PHYSICS,  200, sys_bounds_adapt, "bounds");
