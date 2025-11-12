@@ -12,12 +12,18 @@
 typedef struct {
     ecs_sprite_view_t v;
     float key;
+    int   seq; //insertion order
 } Item;
 
 static int cmp_item(const void* a, const void* b) {
-    float ka = ((const Item*)a)->key;
-    float kb = ((const Item*)b)->key;
-    return (ka > kb) - (ka < kb);
+    const Item* A = (const Item*)a;
+    const Item* B = (const Item*)b;
+    if (A->key < B->key) return -1;
+    if (A->key > B->key) return  1;
+    // tiebreaker
+    if (A->seq < B->seq) return -1;
+    if (A->seq > B->seq) return  1;
+    return 0;
 }
 
 static unsigned char u8(float x){
@@ -47,8 +53,9 @@ static void draw_world_and_ui(void) {
         if (!ecs_sprites_next(&it, &v)) break;
 
         // depth: screen-space "feet"
-        float bottomY = (v.y - v.oy) + v.src.h;
-        items[count++] = (Item){ .v = v, .key = bottomY };
+        float feetY = v.y - v.oy + fabsf(v.src.h);
+        Item item = { .v = v, .key = feetY, .seq = count };
+        items[count++] = item;
     }
     qsort(items, count, sizeof(Item), cmp_item);
 
@@ -154,11 +161,25 @@ static void draw_world_and_ui(void) {
     }
 }
 
-bool renderer_init(int width, int height, const char* title, int target_fps);
+static void DrawCheckerboardBackground(int tileSize, Color c1, Color c2) {
+    const int w = GetScreenWidth();
+    const int h = GetScreenHeight();
+
+    // Number of tiles needed to fill the screen
+    const int cols = (w + tileSize - 1) / tileSize;
+    const int rows = (h + tileSize - 1) / tileSize;
+
+    for (int y = 0; y < rows; y++) {
+        for (int x = 0; x < cols; x++) {
+            Color c = ((x + y) % 2 == 0) ? c1 : c2;
+            DrawRectangle(x*tileSize, y*tileSize, tileSize, tileSize, c);
+        }
+    }
+}
 
 void renderer_next_frame(void) {
     BeginDrawing();
-    ClearBackground((Color){24,24,32,255});
+    DrawCheckerboardBackground(32, DARKGRAY, BLACK);
 
     draw_world_and_ui();
 
