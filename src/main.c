@@ -16,13 +16,15 @@
 int init_entities(int W, int H)
 {
     tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
-    tex_handle_t tex_coin       = asset_acquire_texture("assets/coin.png");
+    //tex_handle_t tex_coin       = asset_acquire_texture("assets/coin.png");
+    tex_handle_t tex_coin       = asset_acquire_texture("assets/coin_gold.png");
     tex_handle_t tex_npc        = asset_acquire_texture("assets/npc.png");
 
     // Query sizes via asset manager
     int pw=0, ph=0, cw=0, ch=0, nw=0, nh=0;
     asset_texture_size(tex_player, &pw, &ph);
     asset_texture_size(tex_coin, &cw, &ch);
+    cw = cw / 8;
     asset_texture_size(tex_npc, &nw, &nh);
 
     ecs_entity_t player = ecs_create();
@@ -49,6 +51,7 @@ int init_entities(int W, int H)
             cw*0.5f, ch*0.5f);
         cmp_add_item(c, ITEM_COIN);
         cmp_add_size(c, cw * 0.5f, ch * 0.5f);
+        cmp_add_anim(c, 8, 20);
     }
 
     ecs_entity_t npc = ecs_create();
@@ -117,6 +120,7 @@ int main(void)
             ecs_tick(FIXED_DT, &in);
             acc -= FIXED_DT;
         }
+        ecs_present(frame);
 
         renderer_next_frame(); //renderer owns the asset lifecycle too calling the collect func
     }

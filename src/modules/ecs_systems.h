@@ -11,6 +11,7 @@ typedef enum {
     PHASE_SIM_POST,
     PHASE_DEBUG,
     PHASE_RENDER_FEED,
+    PHASE_PRESENT,
     PHASE_COUNT
     // I iterate until PHASE_COUNT, dont put any enum after it
 } ecs_phase_t;

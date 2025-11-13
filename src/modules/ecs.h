@@ -10,6 +10,7 @@
 #define CMP_POS       (1<<0)
 #define CMP_VEL       (1<<1)
 #define CMP_SPR       (1<<2)
+#define CMP_ANIM      (1<<3)
 #define CMP_PLAYER    (1<<4)
 #define CMP_ITEM      (1<<5)
 #define CMP_INV       (1<<6)
@@ -74,6 +75,7 @@ void cmp_add_position (ecs_entity_t e, float x, float y);
 void cmp_add_velocity (ecs_entity_t e, float x, float y);
 void cmp_add_sprite_handle(ecs_entity_t e, tex_handle_t h, rectf src, float ox, float oy);
 void cmp_add_sprite_path  (ecs_entity_t e, const char* path, rectf src, float ox, float oy);
+void cmp_add_anim(ecs_entity_t e, int frame_count, float fps);
 void cmp_add_player   (ecs_entity_t e);
 void cmp_add_trigger(ecs_entity_t e, float pad, uint32_t target_mask);
 void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state);
@@ -84,6 +86,7 @@ void cmp_add_size     (ecs_entity_t e, float hx, float hy); // AABB half-extents
 
 // ====== Update & render ======
 void ecs_tick(float fixed_dt, const input_t* in);
+void ecs_present(float fixed_dt);
 
 // ========= Iterators  ========
 // --- sprite iterator ---

@@ -20,6 +20,12 @@ static inline int          ent_index_checked(ecs_entity_t e);
 typedef struct { float x, y; } cmp_position_t;
 typedef struct { float x, y; } cmp_velocity_t;
 typedef struct { tex_handle_t tex; rectf src; float ox, oy; } cmp_sprite_t;
+typedef struct {
+    float current_time;
+    float frame_duration;
+    int   frame;
+    int   frame_count;
+} cmp_anim_t;
 typedef struct { float hx, hy; } cmp_collider_t;
 
 typedef struct {
@@ -38,6 +44,7 @@ static uint32_t        ecs_gen[ECS_MAX_ENTITIES];
 static uint32_t        ecs_next_gen[ECS_MAX_ENTITIES];
 static cmp_position_t  cmp_pos[ECS_MAX_ENTITIES];
 static cmp_velocity_t  cmp_vel[ECS_MAX_ENTITIES];
+static cmp_anim_t      cmp_anim[ECS_MAX_ENTITIES];
 static cmp_sprite_t    cmp_spr[ECS_MAX_ENTITIES];
 static cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
 static cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
@@ -247,6 +254,19 @@ void cmp_add_sprite_path(ecs_entity_t e, const char* path, rectf src, float ox, 
     asset_release_texture(h);
 }
 
+void cmp_add_anim(ecs_entity_t e, int frame_count, float fps)
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+
+    cmp_anim[i].current_time        = 0.0f;
+    cmp_anim[i].frame       = 0;
+    cmp_anim[i].frame_count = frame_count;
+    cmp_anim[i].frame_duration  = (fps > 0.0f) ? (1.0f / fps) : 0.1f;
+
+    ecs_mask[i] |= CMP_ANIM;
+}
+
 void cmp_add_player(ecs_entity_t e)
 {
     int i = ent_index_checked(e);
@@ -411,6 +431,38 @@ static void sys_pickups_from_proximity(void)
     }
 }
 
+static void sys_anim_sprite(float dt)
+{
+    for (int i = 0; i < ECS_MAX_ENTITIES; ++i) {
+        if (!ecs_alive_idx(i)) continue;
+        if ((ecs_mask[i] & (CMP_SPR | CMP_ANIM)) != (CMP_SPR | CMP_ANIM)) continue;
+
+        cmp_anim_t* a = &cmp_anim[i];
+
+        if (a->frame_count <= 0 || a->frame_duration <= 0.0f) continue;
+
+        a->current_time += dt;
+
+        while (a->current_time >= a->frame_duration) {
+            a->current_time -= a->frame_duration;
+            a->frame++;
+
+            if (a->frame >= a->frame_count) {
+                a->frame = 0;
+            }
+        }
+
+        //temparary just left to right in order frames
+        rectf src = cmp_spr[i].src;
+        float frame_w = src.w;
+
+        float base_x = 0;
+        float new_x0 = base_x + a->frame * frame_w;
+
+        cmp_spr[i].src = rectf_xywh(new_x0, src.y, frame_w, src.h);
+    }
+}
+
 static void try_buy_hat(ecs_entity_t player, ecs_entity_t vendor)
 {
     int ia = ent_index_checked(player);
@@ -510,6 +562,11 @@ void ecs_tick(float dt, const input_t* in)
     ecs_run_phase(PHASE_SIM_PRE,     dt, in);
     ecs_run_phase(PHASE_SIM_POST,    dt, in);
     ecs_run_phase(PHASE_DEBUG,       dt, in);
+}
+
+void ecs_present(float frame_dt)
+{
+    ecs_run_phase(PHASE_PRESENT, frame_dt, NULL);
 }
 
 // --- SPRITES ---
@@ -677,6 +734,7 @@ static void sys_billboards_adapt(float dt, const input_t* in) { (void)in; sys_bi
 static void sys_pickups_adapt(float dt, const input_t* in) { (void)dt; (void)in; sys_pickups_from_proximity(); }
 static void sys_interact_adapt(float dt, const input_t* in) { (void)dt; sys_interact_from_proximity(in); }
 static void sys_debug_binds_adapt(float dt, const input_t* in) { (void)dt; sys_debug_binds(in); }
+static void sys_anim_sprite_adapt(float dt, const input_t* in) { (void)in; sys_anim_sprite(dt); }
 
 // =============== Registration =========
 static void ecs_register_builtin_systems(void)
@@ -691,6 +749,8 @@ static void ecs_register_builtin_systems(void)
     ecs_register_system(PHASE_SIM_POST, 100, sys_pickups_adapt, "pickups");
     ecs_register_system(PHASE_SIM_POST, 200, sys_billboards_adapt, "billboards");
     ecs_register_system(PHASE_SIM_POST, 300, sys_interact_adapt, "interact");
+    
+    ecs_register_system(PHASE_PRESENT,  100, sys_anim_sprite_adapt,"sprite_anim");
 
     ecs_register_system(PHASE_DEBUG,    100, sys_debug_binds_adapt, "debug_binds");
 }
