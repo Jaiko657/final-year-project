@@ -5,6 +5,8 @@
 #include "input.h"
 #include "asset.h"
 #include "ecs_systems.h"
+#define MAX_ANIMS 16
+#define MAX_FRAMES 16
 
 // =============== Bitmasks / Tags =========
 #define CMP_POS       (1<<0)
@@ -57,6 +59,21 @@ typedef struct {
     ecs_entity_t b;   // the entity that matched filter & is within pad
 } prox_pair_t;
 
+typedef enum {
+    DIR_NORTH = 0,
+    DIR_NORTHEAST,
+    DIR_EAST,
+    DIR_SOUTHEAST,
+    DIR_SOUTH,
+    DIR_SOUTHWEST,
+    DIR_WEST,
+    DIR_NORTHWEST,
+} facing_t;
+typedef struct {
+    uint8_t col;  // column in the grid
+    uint8_t row;  // row in the grid
+} anim_frame_coord_t;
+typedef enum { ANIM_ROWWISE, ANIM_COLUMNWISE } anim_layout_t;
 typedef enum { BILLBOARD_INACTIVE = 0, BILLBOARD_ACTIVE = 1} billboard_state_t;
 typedef struct { char text[64]; float y_offset, linger, timer; billboard_state_t state; } cmp_billboard_t;
 
@@ -72,10 +89,17 @@ ecs_entity_t ecs_create(void);
 void         ecs_destroy(ecs_entity_t e);
 
 void cmp_add_position (ecs_entity_t e, float x, float y);
-void cmp_add_velocity (ecs_entity_t e, float x, float y);
+void cmp_add_velocity(ecs_entity_t e, float x, float y, facing_t direction);
 void cmp_add_sprite_handle(ecs_entity_t e, tex_handle_t h, rectf src, float ox, float oy);
 void cmp_add_sprite_path  (ecs_entity_t e, const char* path, rectf src, float ox, float oy);
-void cmp_add_anim(ecs_entity_t e, int frame_count, float fps);
+void cmp_add_anim(
+    ecs_entity_t e,
+    int frame_w,
+    int frame_h,
+    int anim_count,
+    const int* frames_per_anim,
+    const anim_frame_coord_t frames[][MAX_FRAMES],
+    float fps);
 void cmp_add_player   (ecs_entity_t e);
 void cmp_add_trigger(ecs_entity_t e, float pad, uint32_t target_mask);
 void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state);

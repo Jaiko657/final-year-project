@@ -18,13 +18,20 @@ static inline int          ent_index_checked(ecs_entity_t e);
 
 // =============== Components (internal) ===
 typedef struct { float x, y; } cmp_position_t;
-typedef struct { float x, y; } cmp_velocity_t;
+typedef struct { float x, y; facing_t facing; } cmp_velocity_t;
 typedef struct { tex_handle_t tex; rectf src; float ox, oy; } cmp_sprite_t;
 typedef struct {
-    float current_time;
+    int frame_w;
+    int frame_h;
+
+    int anim_count;
+    int frames_per_anim[MAX_ANIMS];
+    anim_frame_coord_t frames[MAX_ANIMS][MAX_FRAMES];
+
+    int   current_anim;
+    int   frame_index;
     float frame_duration;
-    int   frame;
-    int   frame_count;
+    float current_time;
 } cmp_anim_t;
 typedef struct { float hx, hy; } cmp_collider_t;
 
@@ -230,11 +237,11 @@ void cmp_add_position(ecs_entity_t e, float x, float y)
     ecs_mask[i] |= CMP_POS;
 }
 
-void cmp_add_velocity(ecs_entity_t e, float x, float y)
+void cmp_add_velocity(ecs_entity_t e, float x, float y, facing_t direction)
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
-    cmp_vel[i] = (cmp_velocity_t){ x, y };
+    cmp_vel[i] = (cmp_velocity_t){ x, y, direction };
     ecs_mask[i] |= CMP_VEL;
 }
 
@@ -254,15 +261,38 @@ void cmp_add_sprite_path(ecs_entity_t e, const char* path, rectf src, float ox, 
     asset_release_texture(h);
 }
 
-void cmp_add_anim(ecs_entity_t e, int frame_count, float fps)
+void cmp_add_anim(
+    ecs_entity_t e,
+    int frame_w,
+    int frame_h,
+    int anim_count,
+    const int* frames_per_anim,
+    const anim_frame_coord_t frames[][MAX_FRAMES],
+    float fps)
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
 
-    cmp_anim[i].current_time        = 0.0f;
-    cmp_anim[i].frame       = 0;
-    cmp_anim[i].frame_count = frame_count;
-    cmp_anim[i].frame_duration  = (fps > 0.0f) ? (1.0f / fps) : 0.1f;
+    cmp_anim_t* a = &cmp_anim[i];
+    memset(a, 0, sizeof(*a));
+
+    a->frame_w  = frame_w;
+    a->frame_h  = frame_h;
+    a->anim_count    = anim_count;
+    a->current_anim  = 0;
+    a->frame_index   = 0;
+    a->current_time  = 0.0f;
+    a->frame_duration = (fps > 0.0f) ? (1.0f / fps) : 0.1f;
+
+    for (int anim = 0; anim < anim_count && anim < MAX_ANIMS; ++anim) {
+        int count = frames_per_anim[anim];
+        if (count > MAX_FRAMES) count = MAX_FRAMES;
+
+        a->frames_per_anim[anim] = count;
+        for (int f = 0; f < count; ++f) {
+            a->frames[anim][f] = frames[anim][f];
+        }
+    }
 
     ecs_mask[i] |= CMP_ANIM;
 }
@@ -331,8 +361,25 @@ static void sys_input(float dt, const input_t* in)
     for (int e=0;e<ECS_MAX_ENTITIES;++e){
         if(!ecs_alive_idx(e)) continue;
         if ((ecs_mask[e]&(CMP_PLAYER|CMP_VEL))==(CMP_PLAYER|CMP_VEL)){
-            cmp_vel[e].x = in->moveX * SPEED;
-            cmp_vel[e].y = in->moveY * SPEED;
+            cmp_velocity_t* v = &cmp_vel[e];
+            v->x = in->moveX * SPEED;
+            v->y = in->moveY * SPEED;
+            if (in->moveX != 0.0f || in->moveY != 0.0f) {
+                if (in->moveY < 0.0f) {                 // NORTH half
+                    if (in->moveX < 0.0f)  v->facing = DIR_NORTHWEST;
+                    else if (in->moveX > 0.0f) v->facing = DIR_NORTHEAST;
+                    else                    v->facing = DIR_NORTH;
+                }
+                else if (in->moveY > 0.0f) {           // SOUTH half
+                    if (in->moveX < 0.0f)  v->facing = DIR_SOUTHWEST;
+                    else if (in->moveX > 0.0f) v->facing = DIR_SOUTHEAST;
+                    else                    v->facing = DIR_SOUTH;
+                }
+                else {                                 // Horizontal only
+                    if (in->moveX < 0.0f)  v->facing = DIR_WEST;
+                    else if (in->moveX > 0.0f) v->facing = DIR_EAST;
+                }
+            }
             break;
         }
     }
@@ -383,7 +430,7 @@ static void sys_proximity_build_view(void)
 
         const cmp_trigger_t* tr = &cmp_trigger[a];
 
-        for (int b=0; b<ECS_MAX_ENTITIES; ++b){
+        for (int b=0; b<ECS_MAX_ENTITIES; ++b) {
             if (b==a || !ecs_alive_idx(b)) continue;
             if ((ecs_mask[b] & tr->target_mask) != tr->target_mask) continue;
             if ((ecs_mask[b] & (CMP_POS|CMP_COL)) != (CMP_POS|CMP_COL)) continue;
@@ -431,35 +478,85 @@ static void sys_pickups_from_proximity(void)
     }
 }
 
+static void sys_anim_controller()
+{
+    ecs_entity_t player = find_player_handle();
+    int idx = ent_index_checked(player);
+    if (idx < 0) return;
+
+    if ((ecs_mask[idx] & (CMP_ANIM | CMP_VEL)) != (CMP_ANIM | CMP_VEL))
+        return;
+
+    cmp_anim_t*      a = &cmp_anim[idx];
+    cmp_velocity_t*  v = &cmp_vel[idx];
+
+    float vx = v->x;
+    float vy = v->y;
+    float speed2 = vx*vx + vy*vy;
+
+    int dir = (int)v->facing;   // 0..7: DIR_NORTH..DIR_NORTHWEST
+
+    int new_anim;
+    if (speed2 < 0.01f * 0.01f) {
+        // Idle
+        new_anim = 8 + dir;
+    } else {
+        // Walking
+        new_anim = dir;
+    }
+
+    // new animation, so reset state to fresh
+    if(new_anim >= MAX_ANIMS) {
+        LOGC(LOGCAT_ECS, LOG_LVL_ERROR, "New animation: %i outside of max animation %i", new_anim, MAX_ANIMS);
+        return;
+    }
+    if (new_anim != a->current_anim) {
+        //LOGC(LOGCAT_ECS, LOG_LVL_DEBUG, "New animation: %i", new_anim);
+        a->current_anim = new_anim;
+        a->frame_index  = 0;
+        a->current_time = 0.0f;
+    }
+
+    //reset frame index to 0 if outside max length
+    int seq_len = a->frames_per_anim[a->current_anim];
+    if (seq_len <= 0) return;
+    if (a->frame_index >= seq_len) {
+        a->frame_index = 0;
+    }
+}
+
 static void sys_anim_sprite(float dt)
 {
-    for (int i = 0; i < ECS_MAX_ENTITIES; ++i) {
+    for (int i = 0; i < ECS_MAX_ENTITIES; ++i)
+    {
         if (!ecs_alive_idx(i)) continue;
         if ((ecs_mask[i] & (CMP_SPR | CMP_ANIM)) != (CMP_SPR | CMP_ANIM)) continue;
 
-        cmp_anim_t* a = &cmp_anim[i];
+        cmp_anim_t*   a = &cmp_anim[i];
+        cmp_sprite_t* s = &cmp_spr[i];
 
-        if (a->frame_count <= 0 || a->frame_duration <= 0.0f) continue;
+        int anim = a->current_anim;
+        if (anim < 0 || anim >= a->anim_count) continue;
 
+        int seq_len = a->frames_per_anim[anim];
+        if (seq_len <= 0) continue;
+
+        // --- advance time and frame index ---
         a->current_time += dt;
-
         while (a->current_time >= a->frame_duration) {
             a->current_time -= a->frame_duration;
-            a->frame++;
-
-            if (a->frame >= a->frame_count) {
-                a->frame = 0;
-            }
+            a->frame_index++;
+            if (a->frame_index >= seq_len)
+                a->frame_index = 0;
         }
 
-        //temparary just left to right in order frames
-        rectf src = cmp_spr[i].src;
-        float frame_w = src.w;
+        anim_frame_coord_t fc = a->frames[anim][a->frame_index];
+        int frame_w = a->frame_w;
+        int frame_h = a->frame_h;
+        int x = fc.col * frame_w;
+        int y = fc.row * frame_h;
 
-        float base_x = 0;
-        float new_x0 = base_x + a->frame * frame_w;
-
-        cmp_spr[i].src = rectf_xywh(new_x0, src.y, frame_w, src.h);
+        s->src = rectf_xywh((float)x, (float)y, (float)frame_w, (float)frame_h);
     }
 }
 
@@ -558,8 +655,8 @@ void ecs_tick(float dt, const input_t* in)
     if(ui_toast_timer > 0) ui_toast_timer -= dt;
 
     ecs_run_phase(PHASE_INPUT,       dt, in);
-    ecs_run_phase(PHASE_PHYSICS,     dt, in);
     ecs_run_phase(PHASE_SIM_PRE,     dt, in);
+    ecs_run_phase(PHASE_PHYSICS,     dt, in);
     ecs_run_phase(PHASE_SIM_POST,    dt, in);
     ecs_run_phase(PHASE_DEBUG,       dt, in);
 }
@@ -735,16 +832,19 @@ static void sys_pickups_adapt(float dt, const input_t* in) { (void)dt; (void)in;
 static void sys_interact_adapt(float dt, const input_t* in) { (void)dt; sys_interact_from_proximity(in); }
 static void sys_debug_binds_adapt(float dt, const input_t* in) { (void)dt; sys_debug_binds(in); }
 static void sys_anim_sprite_adapt(float dt, const input_t* in) { (void)in; sys_anim_sprite(dt); }
+static void sys_anim_controller_adapt(float dt, const input_t* in) { (void)dt; (void)in; sys_anim_controller(); }
+
 
 // =============== Registration =========
 static void ecs_register_builtin_systems(void)
 {
     ecs_register_system(PHASE_INPUT,    0, sys_input_adapt, "input");
 
+    ecs_register_system(PHASE_SIM_PRE,  100, sys_prox_build_adapt, "proximity_view");
+    ecs_register_system(PHASE_SIM_PRE,  200, sys_anim_controller_adapt, "animation_controller");
+
     ecs_register_system(PHASE_PHYSICS,  100, sys_physics_adapt, "physics");
     ecs_register_system(PHASE_PHYSICS,  200, sys_bounds_adapt, "bounds");
-
-    ecs_register_system(PHASE_SIM_PRE,  100, sys_prox_build_adapt, "proximity_view");
 
     ecs_register_system(PHASE_SIM_POST, 100, sys_pickups_adapt, "pickups");
     ecs_register_system(PHASE_SIM_POST, 200, sys_billboards_adapt, "billboards");

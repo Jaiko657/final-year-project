@@ -15,28 +15,80 @@
 
 int init_entities(int W, int H)
 {
-    tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
+    //tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
+    tex_handle_t tex_player     = asset_acquire_texture("assets/Small-8.png");
     //tex_handle_t tex_coin       = asset_acquire_texture("assets/coin.png");
     tex_handle_t tex_coin       = asset_acquire_texture("assets/coin_gold.png");
     tex_handle_t tex_npc        = asset_acquire_texture("assets/npc.png");
 
     // Query sizes via asset manager
-    int pw=0, ph=0, cw=0, ch=0, nw=0, nh=0;
-    asset_texture_size(tex_player, &pw, &ph);
-    asset_texture_size(tex_coin, &cw, &ch);
-    cw = cw / 8;
+    int pw=16, ph=16, cw=32, ch=32, nw=0, nh=0;
     asset_texture_size(tex_npc, &nw, &nh);
 
     ecs_entity_t player = ecs_create();
     cmp_add_position(player, W/2.0f, H/2.0f);
-    cmp_add_velocity(player, 0, 0);
+    cmp_add_velocity(player, 0, 0, DIR_SOUTH);
     cmp_add_sprite_handle(player, tex_player,
-        (rectf){0,0,(float)pw,(float)ph},
+        (rectf){0,16,(float)pw,(float)ph},
         pw*0.5f, ph*0.5f);
     cmp_add_player(player);
     cmp_add_inventory(player);
     cmp_add_size(player, 12.0f, 12.0f);
     cmp_add_trigger(player, 2.0f, CMP_ITEM | CMP_COL);
+    enum {
+        ANIM_WALK_N = 0,
+        ANIM_WALK_NE,
+        ANIM_WALK_E,
+        ANIM_WALK_SE,
+        ANIM_WALK_S,
+        ANIM_WALK_SW,
+        ANIM_WALK_W,
+        ANIM_WALK_NW,
+
+        ANIM_IDLE_N,
+        ANIM_IDLE_NE,
+        ANIM_IDLE_E,
+        ANIM_IDLE_SE,
+        ANIM_IDLE_S,
+        ANIM_IDLE_SW,
+        ANIM_IDLE_W,
+        ANIM_IDLE_NW,
+
+        ANIM_COUNT
+    };
+    int frames_per_anim[ANIM_COUNT] = {
+        2,2,2,2,2,2,2,2,
+        1,1,1,1,1,1,1,1
+    };
+    anim_frame_coord_t anim_frames[ANIM_COUNT][MAX_FRAMES] = {
+        //WALKING
+        { {0,0}, {0,2} },
+        { {1,0}, {1,2} },
+        { {2,0}, {2,2} },
+        { {3,0}, {3,2} },
+        { {4,0}, {4,2} },
+        { {5,0}, {5,2} },
+        { {6,0}, {6,2} },
+        { {7,0}, {7,2} },
+        //IDLE
+        { {0,1} },
+        { {1,1} },
+        { {2,1} },
+        { {3,1} },
+        { {4,1} },
+        { {5,1} },
+        { {6,1} },
+        { {7,1} },
+    };
+    cmp_add_anim(
+        player,
+        16,
+        16,
+        ANIM_COUNT,
+        frames_per_anim,
+        anim_frames,
+        8.0f
+    );
 
     const Vector2 coinPos[3] = {
         { W/2.0f + 120.0f, H/2.0f },
@@ -51,7 +103,23 @@ int init_entities(int W, int H)
             cw*0.5f, ch*0.5f);
         cmp_add_item(c, ITEM_COIN);
         cmp_add_size(c, cw * 0.5f, ch * 0.5f);
-        cmp_add_anim(c, 8, 20);
+
+        int frames_per_anim[ANIM_COUNT] = {
+            8
+        };
+        anim_frame_coord_t anim_frames[ANIM_COUNT][MAX_FRAMES] = {
+            { {0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5,0},{6, 0}, {7,0} },
+        };
+        cmp_add_anim(
+            c,
+            32,
+            32,
+            ANIM_COUNT,
+            frames_per_anim,
+            anim_frames,
+            8.0f
+        );
+
     }
 
     ecs_entity_t npc = ecs_create();
