@@ -1,18 +1,19 @@
-#include "renderer.h"
-
-#include "raylib.h"
-#include "ecs.h"
-#include "asset.h"
-#include "logger.h"
+#include "../includes/renderer.h"
+#include "../includes/ecs.h"
+#include "../includes/ecs_game.h"
+#include "../includes/asset.h"
+#include "../includes/asset_renderer_internal.h"
+#include "../includes/logger.h"
 
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "raylib.h"
 
 typedef struct {
     ecs_sprite_view_t v;
     float key;
-    int   seq; //insertion order
+    int   seq; //insertion order, tie breaker
 } Item;
 
 static int cmp_item(const void* a, const void* b) {
@@ -39,7 +40,7 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
         return false;
     }
     SetTargetFPS(target_fps >= 0 ? target_fps : 60);
-    SetTraceLogLevel(LOG_DEBUG);   // make Raylib print DEBUG+
+    SetTraceLogLevel(LOG_DEBUG);   // make Raylib print DEBUG+ //TODO: idk if setting up raylib in renderer ideal, because comes with this responsibility
     return true;
 }
 
@@ -153,7 +154,7 @@ static void draw_world_and_ui(void) {
     // ===== HUD =====
     {
         int coins=0; bool hasHat=false;
-        ecs_get_player_stats(&coins, &hasHat);
+        game_get_player_stats(&coins, &hasHat);
         char hud[64];
         snprintf(hud, sizeof(hud), "Coins: %d  (%s)", coins, hasHat?"Hat ON":"No hat");
         DrawText(hud, 10, 10, 20, RAYWHITE);

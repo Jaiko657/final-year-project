@@ -24,7 +24,7 @@ void ecs_systems_init(void);
 void ecs_register_system(ecs_phase_t phase, int order, ecs_system_fn fn, const char* name);
 void ecs_run_phase(ecs_phase_t phase, float dt, const input_t* in);
 
-// Optional: quick query (useful for future perf tooling)
+// might not need, abandoned the performance testing stuff atm, will come back to this
 typedef struct {
     const char* name;
     int order;

@@ -1,30 +1,35 @@
-#include "modules/renderer.h"
-#include "modules/ecs.h"
-#include "modules/input.h"
-#include "modules/logger.h"
-#include "modules/logger_raylib_adapter.h"
-#include "modules/asset.h"
+#include "includes/engine_types.h"
+#include "includes/renderer.h"
+#include "includes/ecs.h"
+#include "includes/ecs_game.h"
+#include "includes/input.h"
+#include "includes/logger.h"
+#include "includes/logger_raylib_adapter.h"
+#include "includes/asset.h"
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>  // for qsort
 
+#include "raylib.h"
+
 /*
  * TODO:
+ * - ENGINE, I dont like that main is managing startup etc of everything, 
+ *   I am struggling to think of where state goes other than inside ecs which is not what i want.
+ *    I want to have global object that is setup and ran by main, so i can test better also later down the line.
+ *      (dep inject, input system, renderer. etc)
  * - figure out pixel scaling sub pixel movements (allow entities to be off the scale, sub pixel position)
 */
 
 int init_entities(int W, int H)
 {
-    //tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
-    tex_handle_t tex_player     = asset_acquire_texture("assets/Small-8.png");
-    //tex_handle_t tex_coin       = asset_acquire_texture("assets/coin.png");
+    tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
     tex_handle_t tex_coin       = asset_acquire_texture("assets/coin_gold.png");
     tex_handle_t tex_npc        = asset_acquire_texture("assets/npc.png");
 
-    // Query sizes via asset manager
-    int pw=16, ph=16, cw=32, ch=32, nw=0, nh=0;
-    asset_texture_size(tex_npc, &nw, &nh);
+    int pw=16, ph=16, cw=32, ch=32, nw=16, nh=16;
 
+    // ADD PLAYER
     ecs_entity_t player = ecs_create();
     cmp_add_position(player, W/2.0f, H/2.0f);
     cmp_add_velocity(player, 0, 0, DIR_SOUTH);
@@ -90,7 +95,8 @@ int init_entities(int W, int H)
         8.0f
     );
 
-    const Vector2 coinPos[3] = {
+    // ADD COINS
+    const v2f coinPos[3] = {
         { W/2.0f + 120.0f, H/2.0f },
         { W/2.0f - 160.0f, H/2.0f - 60.0f },
         { W/2.0f +  40.0f, H/2.0f + 90.0f }
@@ -112,8 +118,8 @@ int init_entities(int W, int H)
         };
         cmp_add_anim(
             c,
-            32,
-            32,
+            cw,
+            ch,
             ANIM_COUNT,
             frames_per_anim,
             anim_frames,
@@ -122,6 +128,7 @@ int init_entities(int W, int H)
 
     }
 
+    // ADD NPC/VENDOR
     ecs_entity_t npc = ecs_create();
     cmp_add_position(npc, 100.0f, H/2.0f);
     cmp_add_sprite_handle(npc, tex_npc,
@@ -130,12 +137,11 @@ int init_entities(int W, int H)
     cmp_add_vendor(npc, ITEM_HAT, 3);
     cmp_add_size(npc, 12.0f, 16.0f);
 
-    // Example: add a billboard to vendor that shows when player is near
-    cmp_add_billboard(npc, "Press E to buy hat", -64.0f, 0.10f, BILLBOARD_ACTIVE);
-    // And trigger so vendor reacts to player proximity
     cmp_add_trigger(npc, 30.0f, CMP_PLAYER | CMP_COL);
+    cmp_add_billboard(npc, "Press E to buy hat", -64.0f, 0.10f, BILLBOARD_ACTIVE);
 
     // Release setup refs (ECS added its own refs)
+    //TODO: I guess this is ok but not sure if i like it
     asset_release_texture(tex_player);
     asset_release_texture(tex_coin);
     asset_release_texture(tex_npc);
@@ -153,6 +159,7 @@ int main(void)
     input_init_defaults();
     asset_init();
     ecs_init();
+    ecs_register_game_systems();
     ecs_set_world_size(W, H);
 
     // --- renderer/window ---
