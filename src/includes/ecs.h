@@ -69,6 +69,13 @@ typedef enum {
 } facing_t;
 
 typedef struct {
+    facing_t rawDir;
+    facing_t facingDir;
+    facing_t candidateDir;
+    float candidateTime;
+} smoothed_facing_t;
+
+typedef struct {
     uint8_t col;
     uint8_t row;
 } anim_frame_coord_t;

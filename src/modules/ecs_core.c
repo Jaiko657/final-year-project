@@ -143,7 +143,13 @@ void cmp_add_velocity(ecs_entity_t e, float x, float y, facing_t direction)
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
-    cmp_vel[i] = (cmp_velocity_t){ x, y, direction };
+    smoothed_facing_t smoothed_dir = {
+        .rawDir = direction,
+        .facingDir = direction,
+        .candidateDir = direction,
+        .candidateTime = 0.0f
+    };
+    cmp_vel[i] = (cmp_velocity_t){ x, y, smoothed_dir };
     ecs_mask[i] |= CMP_VEL;
 }
 
@@ -199,33 +205,72 @@ void cmp_add_size(ecs_entity_t e, float hx, float hy)
 }
 
 // =============== Systems (internal) ======
+static facing_t dir_from_input(const input_t* in, facing_t fallback)
+{
+    if (in->moveX == 0.0f && in->moveY == 0.0f) {
+        return fallback;
+    }
+
+    if (in->moveY < 0.0f) {                 // NORTH half
+        if      (in->moveX < 0.0f) return DIR_NORTHWEST;
+        else if (in->moveX > 0.0f) return DIR_NORTHEAST;
+        else                       return DIR_NORTH;
+    }
+    else if (in->moveY > 0.0f) {           // SOUTH half
+        if      (in->moveX < 0.0f) return DIR_SOUTHWEST;
+        else if (in->moveX > 0.0f) return DIR_SOUTHEAST;
+        else                       return DIR_SOUTH;
+    }
+    else {                                 // Horizontal only
+        if      (in->moveX < 0.0f) return DIR_WEST;
+        else if (in->moveX > 0.0f) return DIR_EAST;
+    }
+    //shuts up compiler, but not sure if its even possible to get here
+    return fallback;
+}
+
 static void sys_input(float dt, const input_t* in)
 {
-    (void)dt;
-    const float SPEED = 200.0f;
-    for (int e=0; e<ECS_MAX_ENTITIES; ++e){
-        if(!ecs_alive_idx(e)) continue;
-        if ((ecs_mask[e]&(CMP_PLAYER|CMP_VEL))==(CMP_PLAYER|CMP_VEL)){
-            cmp_velocity_t* v = &cmp_vel[e];
-            v->x = in->moveX * SPEED;
-            v->y = in->moveY * SPEED;
-            if (in->moveX != 0.0f || in->moveY != 0.0f) {
-                if (in->moveY < 0.0f) {                 // NORTH half
-                    if      (in->moveX < 0.0f) v->facing = DIR_NORTHWEST;
-                    else if (in->moveX > 0.0f) v->facing = DIR_NORTHEAST;
-                    else                       v->facing = DIR_NORTH;
-                }
-                else if (in->moveY > 0.0f) {           // SOUTH half
-                    if      (in->moveX < 0.0f) v->facing = DIR_SOUTHWEST;
-                    else if (in->moveX > 0.0f) v->facing = DIR_SOUTHEAST;
-                    else                       v->facing = DIR_SOUTH;
-                }
-                else {                                 // Horizontal only
-                    if      (in->moveX < 0.0f) v->facing = DIR_WEST;
-                    else if (in->moveX > 0.0f) v->facing = DIR_EAST;
-                }
-            }
+    const float SPEED       = 200.0f;
+    const float CHANGE_TIME = 0.08f;   // 80 ms
+
+    for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
+        if (!ecs_alive_idx(e)) continue;
+        if ((ecs_mask[e] & (CMP_PLAYER | CMP_VEL)) != (CMP_PLAYER | CMP_VEL)) continue;
+
+        cmp_velocity_t*      v = &cmp_vel[e];
+        smoothed_facing_t*   f = &v->facing;
+
+        v->x = in->moveX * SPEED;
+        v->y = in->moveY * SPEED;
+
+        const int hasInput = (in->moveX != 0.0f || in->moveY != 0.0f);
+        if (!hasInput) {
+            f->rawDir        = f->facingDir;
+            f->candidateDir  = f->facingDir;
+            f->candidateTime = 0.0f;
             break;
+        }
+        facing_t newRaw = dir_from_input(in, f->facingDir);
+        f->rawDir = newRaw;
+        if (newRaw == f->facingDir) {
+            f->candidateDir  = f->facingDir;
+            f->candidateTime = 0.0f;
+            break;
+        }
+
+        // Add time
+        if (newRaw == f->candidateDir) {
+            f->candidateTime += dt;
+        } else {
+            f->candidateDir  = newRaw;
+            f->candidateTime = dt;
+        }
+
+        // Threshold hit
+        if (f->candidateTime >= CHANGE_TIME) {
+            f->facingDir     = f->candidateDir;
+            f->candidateTime = 0.0f;
         }
     }
 }

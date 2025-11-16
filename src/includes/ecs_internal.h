@@ -5,7 +5,7 @@
 
 // ===== Internal component storage types =====
 typedef struct { float x, y; } cmp_position_t;
-typedef struct { float x, y; facing_t facing; } cmp_velocity_t;
+typedef struct { float x, y; smoothed_facing_t facing; } cmp_velocity_t;
 
 typedef struct {
     tex_handle_t tex;
