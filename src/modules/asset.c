@@ -1,18 +1,9 @@
-#include "asset.h"
-#include "logger.h"
+#include "../includes/asset.h"
+#include "../includes/logger.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include "raylib.h"
-
-//trying to not use gnu util
-static char* xstrdup(const char* s){
-    if (!s) return NULL;
-    size_t n = strlen(s) + 1;
-    char* p = (char*)malloc(n);
-    if (p) memcpy(p, s, n);
-    return p;
-}
 
 typedef struct Slot {
     Texture2D tex;
@@ -22,7 +13,6 @@ typedef struct Slot {
     char*     path;
 } Slot;
 
-#define MAX_TEX 1024
 static Slot s_tex[MAX_TEX];
 
 static Slot* slot_from_handle(tex_handle_t h) {
@@ -74,6 +64,14 @@ static int find_by_path(const char* path){
     }
     return -1;
 }
+//trying to not use gnu util
+static char* xstrdup(const char* s){
+    if (!s) return NULL;
+    size_t n = strlen(s) + 1;
+    char* p = (char*)malloc(n);
+    if (p) memcpy(p, s, n);
+    return p;
+}
 
 tex_handle_t asset_acquire_texture(const char* path){
     // Try cache first
@@ -88,7 +86,7 @@ tex_handle_t asset_acquire_texture(const char* path){
     for (int i=0;i<MAX_TEX;i++){
         if (!s_tex[i].used){
             Slot* s = &s_tex[i];
-            s->tex = LoadTexture(path); // relies on Raylib
+            s->tex = LoadTexture(path);
             s->used = true;
             s->refc = 1;
             free(s->path);
@@ -98,7 +96,7 @@ tex_handle_t asset_acquire_texture(const char* path){
         }
     }
 
-    LOG(LOG_LVL_ERROR, "asset: out of texture slots (MAX_TEX=%d)", MAX_TEX);
+    LOG(LOG_LVL_ERROR, "asset: out of texture slots (MAX_TEX=%i)", MAX_TEX);
     return (tex_handle_t){0};
 }
 
@@ -135,7 +133,7 @@ uint32_t asset_texture_refcount(tex_handle_t h){
     return s ? s->refc : 0;
 }
 
-// Backend accessor used by renderer backend ONLY:
+// This is internal to here and renderer, so is exposed in includes/asset_renderer_internal.h
 Texture2D asset_backend_resolve_texture_value(tex_handle_t h){
     Slot* s = slot_from_handle(h);
     return s ? s->tex : (Texture2D){0};

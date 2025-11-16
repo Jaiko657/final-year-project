@@ -1,5 +1,5 @@
-#include "logger.h"
-#include "logger_raylib_adapter.h"
+#include "../includes/logger.h"
+#include "../includes/logger_raylib_adapter.h"
 #include "raylib.h"
 #include <stdio.h>
 #include <stddef.h>

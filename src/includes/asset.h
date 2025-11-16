@@ -1,9 +1,10 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
-#include "raylib.h"
 
-typedef struct { uint32_t idx, gen; } tex_handle_t;  // opaque to ECS
+#define MAX_TEX 1024
+
+typedef struct { uint32_t idx, gen; } tex_handle_t;
 
 void asset_init(void);
 void asset_shutdown(void);
@@ -21,4 +22,3 @@ bool         asset_texture_valid(tex_handle_t h);
 void         asset_texture_size(tex_handle_t h, int* out_w, int* out_h);
 const char*  asset_texture_path(tex_handle_t h);
 uint32_t     asset_texture_refcount(tex_handle_t h);
-Texture2D    asset_backend_resolve_texture_value(tex_handle_t h);

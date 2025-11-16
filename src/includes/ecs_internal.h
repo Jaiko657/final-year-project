@@ -1,0 +1,68 @@
+#pragma once
+#include <stdint.h>
+#include <stdbool.h>
+#include "ecs.h"
+
+// ===== Internal component storage types =====
+typedef struct { float x, y; } cmp_position_t;
+typedef struct { float x, y; facing_t facing; } cmp_velocity_t;
+
+typedef struct {
+    tex_handle_t tex;
+    rectf src;
+    float ox, oy;
+} cmp_sprite_t;
+
+typedef struct {
+    int frame_w;
+    int frame_h;
+
+    int anim_count;
+    int frames_per_anim[MAX_ANIMS];
+    anim_frame_coord_t frames[MAX_ANIMS][MAX_FRAMES];
+
+    int   current_anim;
+    int   frame_index;
+    float frame_duration;
+    float current_time;
+} cmp_anim_t;
+
+typedef struct { float hx, hy; } cmp_collider_t;
+
+typedef struct {
+    float    pad;
+    uint32_t target_mask;
+} cmp_trigger_t;
+
+typedef struct {
+    char text[64];
+    float y_offset;
+    float linger;
+    float timer;
+    billboard_state_t state;
+} cmp_billboard_t;
+
+// ===== Global ECS storage (defined in ecs_core.c) =====
+extern uint32_t        ecs_mask[ECS_MAX_ENTITIES];
+extern uint32_t        ecs_gen[ECS_MAX_ENTITIES];
+extern uint32_t        ecs_next_gen[ECS_MAX_ENTITIES];
+extern cmp_position_t  cmp_pos[ECS_MAX_ENTITIES];
+extern cmp_velocity_t  cmp_vel[ECS_MAX_ENTITIES];
+extern cmp_anim_t      cmp_anim[ECS_MAX_ENTITIES];
+extern cmp_sprite_t    cmp_spr[ECS_MAX_ENTITIES];
+extern cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
+extern cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
+extern cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
+
+// ===== Internal helpers =====
+int  ent_index_checked(ecs_entity_t e);
+int  ent_index_unchecked(ecs_entity_t e);
+bool ecs_alive_idx(int i);
+bool ecs_alive_handle(ecs_entity_t e);
+ecs_entity_t handle_from_index(int i);
+float clampf(float v, float a, float b);
+
+ecs_entity_t find_player_handle(void);
+
+// Toast (TODO: move to engine component when engine exists)
+void ui_toast(float secs, const char* fmt, ...);

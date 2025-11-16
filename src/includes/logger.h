@@ -29,6 +29,7 @@ void log_msg(log_level_t lvl, const log_cat_t* cat, const char* fmt, ...);
 #define LOG(lvl, fmt, ...)       do{ static const log_cat_t _anon = { NULL }; if(log_would_log(lvl)) log_msg((lvl), &_anon, fmt, ##__VA_ARGS__); }while(0)
 
 // Common categories
+#define LOGCAT(name) ((log_cat_t){ #name })
 #define LOGCAT_ECS   ((log_cat_t){ "ECS" })
 #define LOGCAT_REND  ((log_cat_t){ "RENDER" })
 #define LOGCAT_ASSET ((log_cat_t){ "ASSET" })

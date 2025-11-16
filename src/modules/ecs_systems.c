@@ -1,4 +1,4 @@
-#include "ecs_systems.h"
+#include "../includes/ecs_systems.h"
 #include <string.h>
 
 #ifndef ECS_MAX_SYSTEMS_PER_PHASE
