@@ -54,7 +54,7 @@ static void sys_anim_controller_impl(void)
     float vy = v->y;
     float speed2 = vx*vx + vy*vy;
 
-    int dir = (int)v->facing;   // 0..7
+    int dir = (int)v->facing.facingDir;   // 0..7
 
     int new_anim;
     if (speed2 < 0.01f * 0.01f) {
