@@ -11,7 +11,7 @@
  * - registration of systems etc (modularity)
  * - duplication of size in sprite and collider?
 */
-// TODO: FIX THE ORDERING OF THIS SHIT
+// IN-PROGRESS: FIX THE ORDERING OF THIS SHIT
 static inline bool         ecs_alive_handle(ecs_entity_t e);
 static inline ecs_entity_t handle_from_index(int i);
 static inline int          ent_index_checked(ecs_entity_t e);
