@@ -1,9 +1,13 @@
 # Ignore any file or directory ending with .old
 *.old
 *.old/
+*.exe
 
 # Ignore the nob binary in the root
 /nob
 
 # Ignore everything in the build folder
 /build/
+#windows raylib stuff
+/lib/
+/include/
