@@ -4,6 +4,7 @@
 #include "../includes/asset.h"
 #include "../includes/asset_renderer_internal.h"
 #include "../includes/logger.h"
+#include "../includes/toast.h"
 
 #include <math.h>
 #include <stdlib.h>

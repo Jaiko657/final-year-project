@@ -1,8 +1,6 @@
 #include "../includes/ecs_internal.h"
 #include "../includes/logger.h"
 #include <math.h>
-#include <stdarg.h>
-#include <stdio.h>
 #include <string.h>
 
 // =============== ECS Storage =============
@@ -24,18 +22,6 @@ static int free_top = 0;
 // Config
 static int g_worldW = 800;
 static int g_worldH = 450;
-
-// =============== Toast UI =================
-static char  ui_toast_text[128] = {0};
-static float ui_toast_timer     = 0.0f;
-
-void ui_toast(float secs, const char* fmt, ...)
-{
-    va_list ap; va_start(ap, fmt);
-    vsnprintf(ui_toast_text, sizeof(ui_toast_text), fmt, ap);
-    va_end(ap);
-    ui_toast_timer = secs;
-}
 
 // =============== Helpers ==================
 int ent_index_checked(ecs_entity_t e) {
@@ -86,9 +72,6 @@ void ecs_init(void){
     for (int i = ECS_MAX_ENTITIES - 1; i >= 0; --i) {
         free_stack[free_top++] = i;
     }
-
-    ui_toast_timer = 0.0f;
-    ui_toast_text[0] = '\0';
 
     ecs_systems_init();
     ecs_register_builtin_systems();
@@ -317,11 +300,6 @@ void sys_debug_binds(const input_t* in)
 // ========= Public: update/iterators ============
 void ecs_tick(float dt, const input_t* in)
 {
-    if(ui_toast_timer > 0.0f) {
-        ui_toast_timer -= dt;
-        if (ui_toast_timer < 0.0f) ui_toast_timer = 0.0f;
-    }
-
     ecs_run_phase(PHASE_INPUT,       dt, in);
     ecs_run_phase(PHASE_SIM_PRE,     dt, in);
     ecs_run_phase(PHASE_PHYSICS,     dt, in);
@@ -333,10 +311,6 @@ void ecs_present(float frame_dt)
 {
     ecs_run_phase(PHASE_PRESENT, frame_dt, NULL);
 }
-
-// --- UI / HINTS (data only) ---
-bool        ecs_toast_is_active(void) { return ui_toast_timer > 0.0f; }
-const char* ecs_toast_get_text(void)   { return ui_toast_text; }
 
 ecs_count_result_t ecs_count_entities(const uint32_t* masks, int num_masks)
 {

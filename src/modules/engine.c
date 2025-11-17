@@ -6,6 +6,7 @@
 #include "../includes/asset.h"
 #include "../includes/ecs.h"
 #include "../includes/ecs_game.h"
+#include "../includes/toast.h"
 #include "../includes/renderer.h"
 
 #include "raylib.h"
@@ -17,6 +18,8 @@ static bool engine_init_subsystems(const char *title)
 {
     logger_use_raylib();
     log_set_min_level(LOG_LVL_DEBUG);
+
+    ui_toast_init();
 
     input_init_defaults();
     asset_init();
@@ -75,6 +78,7 @@ int engine_run(void)
             ecs_tick(FIXED_DT, &in);
             acc -= FIXED_DT;
         }
+        ui_toast_update(frame);
 
         ecs_present(frame);
         renderer_next_frame(); // renderer owns asset lifecycle, calls collect, etc.
