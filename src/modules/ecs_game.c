@@ -1,9 +1,138 @@
-#include "../includes/ecs_game.h"
+#include "../includes/engine_types.h"
+#include "../includes/renderer.h"
+#include "../includes/ecs.h"
 #include "../includes/ecs_internal.h"
 #include "../includes/ecs_proximity.h"
+#include "../includes/ecs_game.h"
+#include "../includes/asset.h"
 #include "../includes/logger.h"
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
+
+int init_entities(int W, int H)
+{
+    tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
+    tex_handle_t tex_coin       = asset_acquire_texture("assets/coin_gold.png");
+    tex_handle_t tex_npc        = asset_acquire_texture("assets/npc.png");
+
+    int pw=16, ph=16, cw=32, ch=32, nw=16, nh=16;
+
+    // ADD PLAYER
+    ecs_entity_t player = ecs_create();
+    cmp_add_position(player, W/2.0f, H/2.0f);
+    cmp_add_velocity(player, 0, 0, DIR_SOUTH);
+    cmp_add_sprite_handle(player, tex_player,
+        (rectf){0,16,(float)pw,(float)ph},
+        pw*0.5f, ph*0.5f);
+    cmp_add_player(player);
+    cmp_add_inventory(player);
+    cmp_add_size(player, 12.0f, 12.0f);
+    cmp_add_trigger(player, 2.0f, CMP_ITEM | CMP_COL);
+
+    enum {
+        ANIM_WALK_N = 0,
+        ANIM_WALK_NE,
+        ANIM_WALK_E,
+        ANIM_WALK_SE,
+        ANIM_WALK_S,
+        ANIM_WALK_SW,
+        ANIM_WALK_W,
+        ANIM_WALK_NW,
+
+        ANIM_IDLE_N,
+        ANIM_IDLE_NE,
+        ANIM_IDLE_E,
+        ANIM_IDLE_SE,
+        ANIM_IDLE_S,
+        ANIM_IDLE_SW,
+        ANIM_IDLE_W,
+        ANIM_IDLE_NW,
+
+        ANIM_COUNT
+    };
+    int frames_per_anim[ANIM_COUNT] = {
+        2,2,2,2,2,2,2,2,
+        1,1,1,1,1,1,1,1
+    };
+    anim_frame_coord_t anim_frames[ANIM_COUNT][MAX_FRAMES] = {
+        //WALKING
+        { {0,0}, {0,2} },
+        { {1,0}, {1,2} },
+        { {2,0}, {2,2} },
+        { {3,0}, {3,2} },
+        { {4,0}, {4,2} },
+        { {5,0}, {5,2} },
+        { {6,0}, {6,2} },
+        { {7,0}, {7,2} },
+        //IDLE
+        { {0,1} },
+        { {1,1} },
+        { {2,1} },
+        { {3,1} },
+        { {4,1} },
+        { {5,1} },
+        { {6,1} },
+        { {7,1} },
+    };
+    cmp_add_anim(
+        player,
+        16,
+        16,
+        ANIM_COUNT,
+        frames_per_anim,
+        anim_frames,
+        8.0f
+    );
+
+    // ADD COINS
+    const v2f coinPos[3] = {
+        { W/2.0f + 120.0f, H/2.0f },
+        { W/2.0f - 160.0f, H/2.0f - 60.0f },
+        { W/2.0f +  40.0f, H/2.0f + 90.0f }
+    };
+    for(int i=0;i<3;++i){
+        ecs_entity_t c = ecs_create();
+        cmp_add_position(c, coinPos[i].x, coinPos[i].y);
+        cmp_add_sprite_handle(c, tex_coin,
+            (rectf){0,0,(float)cw,(float)ch},
+            cw*0.5f, ch*0.5f);
+        cmp_add_item(c, ITEM_COIN);
+        cmp_add_size(c, cw * 0.5f, ch * 0.5f);
+
+        int frames_per_anim_coin[1] = { 8 };
+        anim_frame_coord_t anim_frames_coin[1][MAX_FRAMES] = {
+            { {0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5,0},{6, 0}, {7,0} },
+        };
+        cmp_add_anim(
+            c,
+            cw,
+            ch,
+            1,
+            frames_per_anim_coin,
+            anim_frames_coin,
+            8.0f
+        );
+    }
+
+    // ADD NPC/VENDOR
+    ecs_entity_t npc = ecs_create();
+    cmp_add_position(npc, 100.0f, H/2.0f);
+    cmp_add_sprite_handle(npc, tex_npc,
+        (rectf){0,0,(float)nw,(float)nh},
+        nw*0.5f, nh*0.5f);
+    cmp_add_vendor(npc, ITEM_HAT, 3);
+    cmp_add_size(npc, 12.0f, 16.0f);
+
+    cmp_add_trigger(npc, 30.0f, CMP_PLAYER | CMP_COL);
+    cmp_add_billboard(npc, "Press E to buy hat", -64.0f, 0.10f, BILLBOARD_ACTIVE);
+
+    // Release setup refs (ECS added its own refs)
+    asset_release_texture(tex_player);
+    asset_release_texture(tex_coin);
+    asset_release_texture(tex_npc);
+    return 0;
+}
 
 // ===== Game-side component storage =====
 typedef struct { item_kind_t kind; } cmp_item_t;

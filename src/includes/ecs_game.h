@@ -1,6 +1,8 @@
 #pragma once
 #include "ecs.h"
 
+int init_entities(int W, int H);
+
 typedef enum { ITEM_COIN = 1, ITEM_HAT = 2 } item_kind_t;
 
 // Component adders (game-specific)
