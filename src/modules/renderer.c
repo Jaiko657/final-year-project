@@ -167,25 +167,39 @@ static void draw_screen_ui(void) {
     }
 }
 
-static void DrawCheckerboardBackground(int tileSize, Color c1, Color c2) {
-    const int w = GetScreenWidth();
-    const int h = GetScreenHeight();
+static void DrawCheckerboardBackgroundWorld(camera_view_t view, int tileSize, Color c1, Color c2) {
+    if (tileSize <= 0) return;
 
-    // Number of tiles needed to fill the screen
-    const int cols = (w + tileSize - 1) / tileSize;
-    const int rows = (h + tileSize - 1) / tileSize;
+    const float invZoom = view.zoom != 0.f ? (1.0f / view.zoom) : 1.0f;
+    const float halfWidth = (GetScreenWidth() * 0.5f) * invZoom;
+    const float halfHeight = (GetScreenHeight() * 0.5f) * invZoom;
+
+    const float left = view.center.x - halfWidth;
+    const float top = view.center.y - halfHeight;
+    const float right = view.center.x + halfWidth;
+    const float bottom = view.center.y + halfHeight;
+
+    const int startX = (int)floorf(left / tileSize) * tileSize;
+    const int startY = (int)floorf(top / tileSize) * tileSize;
+    const int cols = (int)ceilf((right - startX) / tileSize) + 2;
+    const int rows = (int)ceilf((bottom - startY) / tileSize) + 2;
+    const int startCol = (int)floorf((float)startX / tileSize);
+    const int startRow = (int)floorf((float)startY / tileSize);
 
     for (int y = 0; y < rows; y++) {
         for (int x = 0; x < cols; x++) {
-            Color c = ((x + y) % 2 == 0) ? c1 : c2;
-            DrawRectangle(x*tileSize, y*tileSize, tileSize, tileSize, c);
+            const int worldX = startX + x * tileSize;
+            const int worldY = startY + y * tileSize;
+            const int colIdx = startCol + x;
+            const int rowIdx = startRow + y;
+            Color c = ((colIdx + rowIdx) & 1) == 0 ? c1 : c2;
+            DrawRectangle(worldX, worldY, tileSize, tileSize, c);
         }
     }
 }
 
 void renderer_next_frame(void) {
     BeginDrawing();
-    DrawCheckerboardBackground(32, DARKGRAY, BLACK);
 
     camera_view_t view = camera_get_view();
     Camera2D cam = {
@@ -196,6 +210,7 @@ void renderer_next_frame(void) {
     };
 
     BeginMode2D(cam);
+    DrawCheckerboardBackgroundWorld(view, 32, DARKGRAY, BLACK);
     draw_world();
     EndMode2D();
 
