@@ -8,6 +8,7 @@
 #include "../includes/ecs_game.h"
 #include "../includes/toast.h"
 #include "../includes/renderer.h"
+#include "../includes/camera.h"
 
 #include "raylib.h"
 
@@ -32,6 +33,8 @@ static bool engine_init_subsystems(const char *title)
         return false;
     }
 
+    camera_init();
+
     // here later you can add:
     // camera_init();
     // world_init();
@@ -53,11 +56,19 @@ bool engine_init(int width, int height, const char *title)
 
     if (!engine_init_subsystems(title)) {
         // clean up whatever got initialised
+        camera_shutdown();
         ecs_shutdown();
         asset_shutdown();
         renderer_shutdown();
         return false;
     }
+
+    camera_config_t cam = camera_get_config();
+    cam.bounds = rectf_xywh(0.0f, 0.0f, (float)g_width, (float)g_height);
+    cam.position = v2f_make(g_width * 0.5f, g_height * 0.5f);
+    cam.target = game_get_player_entity();
+    camera_set_config(&cam);
+
     return true;
 }
 
@@ -78,6 +89,7 @@ int engine_run(void)
             ecs_tick(FIXED_DT, &in);
             acc -= FIXED_DT;
         }
+        camera_tick(frame);
         ui_toast_update(frame);
 
         ecs_present(frame);
@@ -89,6 +101,7 @@ int engine_run(void)
 
 void engine_shutdown(void)
 {
+    camera_shutdown();
     ecs_shutdown();
     asset_shutdown();
     renderer_shutdown();

@@ -187,6 +187,18 @@ void cmp_add_size(ecs_entity_t e, float hx, float hy)
     ecs_mask[i] |= CMP_COL;
 }
 
+bool ecs_get_position(ecs_entity_t e, v2f* out_pos)
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return false;
+    if (!(ecs_mask[i] & CMP_POS)) return false;
+    if (out_pos) {
+        out_pos->x = cmp_pos[i].x;
+        out_pos->y = cmp_pos[i].y;
+    }
+    return true;
+}
+
 // =============== Systems (internal) ======
 static facing_t dir_from_input(const input_t* in, facing_t fallback)
 {

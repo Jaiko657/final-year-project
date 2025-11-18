@@ -117,6 +117,8 @@ void cmp_add_trigger  (ecs_entity_t e, float pad, uint32_t target_mask);
 void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state);
 void cmp_add_size     (ecs_entity_t e, float hx, float hy); // AABB half-extents
 
+bool ecs_get_position(ecs_entity_t e, v2f* out_pos);
+
 // ====== Update & render ======
 void ecs_tick(float fixed_dt, const input_t* in);
 void ecs_present(float fixed_dt);

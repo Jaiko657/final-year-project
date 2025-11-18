@@ -5,6 +5,7 @@
 #include "../includes/asset_renderer_internal.h"
 #include "../includes/logger.h"
 #include "../includes/toast.h"
+#include "../includes/camera.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -45,7 +46,7 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
     return true;
 }
 
-static void draw_world_and_ui(void) {
+static void draw_world(void) {
     // ===== painter’s algorithm queue =====
     Item items[ECS_MAX_ENTITIES];
     int count = 0;
@@ -140,6 +141,9 @@ static void draw_world_and_ui(void) {
     }
 #endif
 
+}
+
+static void draw_screen_ui(void) {
     // ===== toast =====
     if (ecs_toast_is_active()) {
         const char* t = ecs_toast_get_text();
@@ -183,7 +187,19 @@ void renderer_next_frame(void) {
     BeginDrawing();
     DrawCheckerboardBackground(32, DARKGRAY, BLACK);
 
-    draw_world_and_ui();
+    camera_view_t view = camera_get_view();
+    Camera2D cam = {
+        .target = (Vector2){ view.center.x, view.center.y },
+        .offset = (Vector2){ GetScreenWidth() * 0.5f, GetScreenHeight() * 0.5f },
+        .rotation = 0.0f,
+        .zoom = view.zoom,
+    };
+
+    BeginMode2D(cam);
+    draw_world();
+    EndMode2D();
+
+    draw_screen_ui();
 
     // Assets GC after drawing
     asset_collect();
