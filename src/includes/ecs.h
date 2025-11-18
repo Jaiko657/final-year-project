@@ -95,6 +95,7 @@ typedef struct { int i; } ecs_billboard_iter_t;
 void ecs_init(void);
 void ecs_shutdown(void);
 void ecs_set_world_size(int w, int h);
+void ecs_get_world_size(int* w, int* h);
 
 // ====== Entity / components ======
 ecs_entity_t ecs_create(void);

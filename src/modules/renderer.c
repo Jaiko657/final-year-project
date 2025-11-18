@@ -167,8 +167,10 @@ static void draw_screen_ui(void) {
     }
 }
 
-static void DrawCheckerboardBackgroundWorld(camera_view_t view, int tileSize, Color c1, Color c2) {
-    if (tileSize <= 0) return;
+static void DrawWorldBackground(camera_view_t view, int tileSize) {
+    const Color outsideColor = BLACK;
+    const Color lightTile = (Color){ 205, 205, 205, 255 };
+    const Color darkTile = (Color){ 110, 110, 110, 255 };
 
     const float invZoom = view.zoom != 0.f ? (1.0f / view.zoom) : 1.0f;
     const float halfWidth = (GetScreenWidth() * 0.5f) * invZoom;
@@ -179,21 +181,51 @@ static void DrawCheckerboardBackgroundWorld(camera_view_t view, int tileSize, Co
     const float right = view.center.x + halfWidth;
     const float bottom = view.center.y + halfHeight;
 
-    const int startX = (int)floorf(left / tileSize) * tileSize;
-    const int startY = (int)floorf(top / tileSize) * tileSize;
-    const int cols = (int)ceilf((right - startX) / tileSize) + 2;
-    const int rows = (int)ceilf((bottom - startY) / tileSize) + 2;
+    DrawRectangleV(
+        (Vector2){ left, top },
+        (Vector2){ right - left, bottom - top },
+        outsideColor);
+
+    if (tileSize <= 0) return;
+
+    int worldW = 0;
+    int worldH = 0;
+    ecs_get_world_size(&worldW, &worldH);
+    if (worldW <= 0 || worldH <= 0) return;
+
+    const float tileLeft = fmaxf(left, 0.0f);
+    const float tileTop = fmaxf(top, 0.0f);
+    const float tileRight = fminf(right, (float)worldW);
+    const float tileBottom = fminf(bottom, (float)worldH);
+
+    if (tileRight <= tileLeft || tileBottom <= tileTop) return;
+
+    const int startX = (int)floorf(tileLeft / tileSize) * tileSize;
+    const int startY = (int)floorf(tileTop / tileSize) * tileSize;
+    const int endX = (int)ceilf(tileRight / tileSize) * tileSize;
+    const int endY = (int)ceilf(tileBottom / tileSize) * tileSize;
     const int startCol = (int)floorf((float)startX / tileSize);
     const int startRow = (int)floorf((float)startY / tileSize);
 
-    for (int y = 0; y < rows; y++) {
-        for (int x = 0; x < cols; x++) {
-            const int worldX = startX + x * tileSize;
-            const int worldY = startY + y * tileSize;
-            const int colIdx = startCol + x;
-            const int rowIdx = startRow + y;
-            Color c = ((colIdx + rowIdx) & 1) == 0 ? c1 : c2;
-            DrawRectangle(worldX, worldY, tileSize, tileSize, c);
+    for (int y = startY, row = 0; y < endY; y += tileSize, ++row) {
+        if (y >= worldH) break;
+        int drawY = y;
+        if (drawY < 0) continue;
+        int tileH = tileSize;
+        if (drawY + tileH > worldH) tileH = worldH - drawY;
+        if (tileH <= 0) continue;
+        const int rowIdx = startRow + row;
+
+        for (int x = startX, col = 0; x < endX; x += tileSize, ++col) {
+            if (x >= worldW) break;
+            int drawX = x;
+            if (drawX < 0) continue;
+            int tileW = tileSize;
+            if (drawX + tileW > worldW) tileW = worldW - drawX;
+            if (tileW <= 0) continue;
+            const int colIdx = startCol + col;
+            Color c = ((colIdx + rowIdx) & 1) == 0 ? lightTile : darkTile;
+            DrawRectangle(drawX, drawY, tileW, tileH, c);
         }
     }
 }
@@ -210,7 +242,7 @@ void renderer_next_frame(void) {
     };
 
     BeginMode2D(cam);
-    DrawCheckerboardBackgroundWorld(view, 32, DARKGRAY, BLACK);
+    DrawWorldBackground(view, 32);
     draw_world();
     EndMode2D();
 

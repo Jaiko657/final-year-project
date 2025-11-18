@@ -86,6 +86,11 @@ void ecs_set_world_size(int w, int h){
     g_worldH = h;
 }
 
+void ecs_get_world_size(int* w, int* h){
+    if (w) *w = g_worldW;
+    if (h) *h = g_worldH;
+}
+
 // =============== Public: entity ===========
 ecs_entity_t ecs_create(void)
 {

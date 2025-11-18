@@ -67,6 +67,7 @@ bool engine_init(int width, int height, const char *title)
     cam.bounds = rectf_xywh(0.0f, 0.0f, (float)g_width, (float)g_height);
     cam.position = v2f_make(g_width * 0.5f, g_height * 0.5f);
     cam.target = game_get_player_entity();
+    cam.zoom = 2.0f;
     camera_set_config(&cam);
 
     return true;
