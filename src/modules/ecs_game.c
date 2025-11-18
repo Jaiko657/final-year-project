@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+static ecs_entity_t g_player_handle;
+
 int init_entities(int W, int H)
 {
     tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
@@ -20,6 +22,7 @@ int init_entities(int W, int H)
 
     // ADD PLAYER
     ecs_entity_t player = ecs_create();
+    g_player_handle = player;
     cmp_add_position(player, W/2.0f, H/2.0f);
     cmp_add_velocity(player, 0, 0, DIR_SOUTH);
     cmp_add_sprite_handle(player, tex_player,
@@ -213,6 +216,14 @@ bool game_vendor_hint_is_active(int* out_x, int* out_y, const char** out_text)
         }
     }
     return false;
+}
+
+ecs_entity_t game_get_player_entity(void)
+{
+    if (ecs_alive_handle(g_player_handle)) {
+        return g_player_handle;
+    }
+    return ecs_null();
 }
 
 // ===== Systems: pickups & vendor interaction =====

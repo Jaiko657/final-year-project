@@ -2,6 +2,7 @@
 #include "ecs.h"
 
 int init_entities(int W, int H);
+ecs_entity_t game_get_player_entity(void);
 
 typedef enum { ITEM_COIN = 1, ITEM_HAT = 2 } item_kind_t;
 

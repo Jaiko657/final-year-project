@@ -86,6 +86,11 @@ void ecs_set_world_size(int w, int h){
     g_worldH = h;
 }
 
+void ecs_get_world_size(int* w, int* h){
+    if (w) *w = g_worldW;
+    if (h) *h = g_worldH;
+}
+
 // =============== Public: entity ===========
 ecs_entity_t ecs_create(void)
 {
@@ -185,6 +190,18 @@ void cmp_add_size(ecs_entity_t e, float hx, float hy)
     if (i < 0) return;
     cmp_col[i] = (cmp_collider_t){ hx, hy };
     ecs_mask[i] |= CMP_COL;
+}
+
+bool ecs_get_position(ecs_entity_t e, v2f* out_pos)
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return false;
+    if (!(ecs_mask[i] & CMP_POS)) return false;
+    if (out_pos) {
+        out_pos->x = cmp_pos[i].x;
+        out_pos->y = cmp_pos[i].y;
+    }
+    return true;
 }
 
 // =============== Systems (internal) ======
