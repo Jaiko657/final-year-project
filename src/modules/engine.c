@@ -90,6 +90,13 @@ int engine_run(void)
             ecs_tick(FIXED_DT, &in);
             acc -= FIXED_DT;
         }
+
+        if (acc > 0.0f) {
+            input_t in = input_for_tick();
+            ecs_tick(acc, &in);
+            acc = 0.0f;
+        }
+
         camera_tick(frame);
         ui_toast_update(frame);
 
