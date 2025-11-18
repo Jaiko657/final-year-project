@@ -18,6 +18,14 @@ typedef struct {
     int   seq; //insertion order, tie breaker
 } Item;
 
+static const int kVirtualWidth = 640;
+static const int kVirtualHeight = 360;
+static RenderTexture2D gRenderTarget;
+static bool gRenderTargetReady = false;
+
+static inline int renderer_virtual_width(void) { return kVirtualWidth; }
+static inline int renderer_virtual_height(void) { return kVirtualHeight; }
+
 static int cmp_item(const void* a, const void* b) {
     const Item* A = (const Item*)a;
     const Item* B = (const Item*)b;
@@ -43,6 +51,15 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
     }
     SetTargetFPS(target_fps >= 0 ? target_fps : 60);
     SetTraceLogLevel(LOG_DEBUG);   // make Raylib print DEBUG+ //TODO: idk if setting up raylib in renderer ideal, because comes with this responsibility
+
+    gRenderTarget = LoadRenderTexture(renderer_virtual_width(), renderer_virtual_height());
+    if (gRenderTarget.id == 0) {
+        LOGC(LOGCAT_REND, LOG_LVL_FATAL, "Renderer: failed to create render target");
+        return false;
+    }
+    SetTextureFilter(gRenderTarget.texture, TEXTURE_FILTER_POINT);
+    gRenderTargetReady = true;
+
     return true;
 }
 
@@ -123,24 +140,6 @@ static void draw_world(void) {
     }
 #endif
 
-#if DEBUG_FPS
-    // ===== FPS overlay =====
-    {
-        int fps = GetFPS();
-        float ms = GetFrameTime() * 1000.0f;
-        char buf[64];
-        snprintf(buf, sizeof(buf), "FPS: %d | %.2f ms", fps, ms);
-
-        int fs = 18;
-        int tw = MeasureText(buf, fs);
-        int x = (GetScreenWidth() - tw)/2;
-        int y = GetScreenHeight() - fs - 6;
-
-        DrawRectangle(x-8, y-4, tw+16, fs+8, (Color){0,0,0,160});
-        DrawText(buf, x, y, fs, RAYWHITE);
-    }
-#endif
-
 }
 
 static void draw_screen_ui(void) {
@@ -149,7 +148,7 @@ static void draw_screen_ui(void) {
         const char* t = ecs_toast_get_text();
         const int fs = 20;
         int tw = MeasureText(t, fs);
-        int x = (GetScreenWidth() - tw)/2;
+        int x = (renderer_virtual_width() - tw)/2;
         int y = 10;
 
         DrawRectangle(x-8, y-4, tw+16, 28, (Color){0,0,0,180});
@@ -165,6 +164,23 @@ static void draw_screen_ui(void) {
         DrawText(hud, 10, 10, 20, RAYWHITE);
         DrawText("Move: Arrows/WASD | Interact: E", 10, 36, 18, GRAY);
     }
+    // ===== Debug FPS Overlay =====
+#if DEBUG_FPS
+    {
+        int fps = GetFPS();
+        float ms = GetFrameTime() * 1000.0f;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "FPS: %d | %.2f ms", fps, ms);
+
+        int fs = 18;
+        int tw = MeasureText(buf, fs);
+        int x = (renderer_virtual_width() - tw)/2;
+        int y = renderer_virtual_height() - fs - 6;
+
+        DrawRectangle(x-8, y-4, tw+16, fs+8, (Color){0,0,0,160});
+        DrawText(buf, x, y, fs, RAYWHITE);
+    }
+#endif
 }
 
 static void DrawWorldBackground(camera_view_t view, int tileSize) {
@@ -173,8 +189,8 @@ static void DrawWorldBackground(camera_view_t view, int tileSize) {
     const Color darkTile = (Color){ 110, 110, 110, 255 };
 
     const float invZoom = view.zoom != 0.f ? (1.0f / view.zoom) : 1.0f;
-    const float halfWidth = (GetScreenWidth() * 0.5f) * invZoom;
-    const float halfHeight = (GetScreenHeight() * 0.5f) * invZoom;
+    const float halfWidth = (renderer_virtual_width() * 0.5f) * invZoom;
+    const float halfHeight = (renderer_virtual_height() * 0.5f) * invZoom;
 
     const float left = view.center.x - halfWidth;
     const float top = view.center.y - halfHeight;
@@ -231,12 +247,15 @@ static void DrawWorldBackground(camera_view_t view, int tileSize) {
 }
 
 void renderer_next_frame(void) {
-    BeginDrawing();
+    if (!gRenderTargetReady) return;
+
+    BeginTextureMode(gRenderTarget);
+    ClearBackground(BLANK);
 
     camera_view_t view = camera_get_view();
     Camera2D cam = {
         .target = (Vector2){ view.center.x, view.center.y },
-        .offset = (Vector2){ GetScreenWidth() * 0.5f, GetScreenHeight() * 0.5f },
+        .offset = (Vector2){ renderer_virtual_width() * 0.5f, renderer_virtual_height() * 0.5f },
         .rotation = 0.0f,
         .zoom = view.zoom,
     };
@@ -248,6 +267,33 @@ void renderer_next_frame(void) {
 
     draw_screen_ui();
 
+    EndTextureMode();
+
+    BeginDrawing();
+    ClearBackground(BLACK);
+
+    const int screenW = GetScreenWidth();
+    const int screenH = GetScreenHeight();
+    const float scale = fminf((float)screenW / renderer_virtual_width(), (float)screenH / renderer_virtual_height());
+    const float renderW = renderer_virtual_width() * scale;
+    const float renderH = renderer_virtual_height() * scale;
+    const float offsetX = (screenW - renderW) * 0.5f;
+    const float offsetY = (screenH - renderH) * 0.5f;
+
+    Rectangle src = {
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = (float)gRenderTarget.texture.width,
+        .height = (float)-gRenderTarget.texture.height,
+    };
+    Rectangle dst = {
+        .x = offsetX,
+        .y = offsetY,
+        .width = renderW,
+        .height = renderH,
+    };
+    DrawTexturePro(gRenderTarget.texture, src, dst, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+
     // Assets GC after drawing
     asset_collect();
 
@@ -255,5 +301,9 @@ void renderer_next_frame(void) {
 }
 
 void renderer_shutdown(void) {
+    if (gRenderTargetReady) {
+        UnloadRenderTexture(gRenderTarget);
+        gRenderTargetReady = false;
+    }
     if (IsWindowReady()) CloseWindow();
 }
