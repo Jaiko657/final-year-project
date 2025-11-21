@@ -45,10 +45,15 @@ static bool engine_init_subsystems(const char *title)
         return false;
     }
 
+    int world_w = 0, world_h = 0;
+    ecs_get_world_size(&world_w, &world_h);
+    if (world_w <= 0) world_w = g_width;
+    if (world_h <= 0) world_h = g_height;
+
     camera_config_t cam_cfg = camera_get_config();
-    cam_cfg.target = ecs_find_player();
-    cam_cfg.position = v2f_make(g_width / 2.0f, g_height / 2.0f);
-    cam_cfg.bounds = rectf_xywh(0.0f, 0.0f, (float)g_width, (float)g_height);
+    cam_cfg.target   = ecs_find_player();
+    cam_cfg.position = v2f_make(world_w / 2.0f, world_h / 2.0f);
+    cam_cfg.bounds   = rectf_xywh(0.0f, 0.0f, (float)world_w, (float)world_h);
     camera_set_config(&cam_cfg);
 
     return true;
