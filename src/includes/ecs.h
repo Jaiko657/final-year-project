@@ -95,6 +95,10 @@ typedef struct { int i; } ecs_billboard_iter_t;
 void ecs_init(void);
 void ecs_shutdown(void);
 void ecs_set_world_size(int w, int h);
+void ecs_get_world_size(int* out_w, int* out_h);
+bool ecs_get_player_position(float* out_x, float* out_y);
+bool ecs_get_position(ecs_entity_t e, v2f* out_pos);
+ecs_entity_t ecs_find_player(void);
 
 // ====== Entity / components ======
 ecs_entity_t ecs_create(void);
