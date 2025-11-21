@@ -135,8 +135,8 @@ static void DrawCheckerboardBackground(Rectangle view, int tileSize, Color c1, C
     int endX   = (int)ceilf((view.x + view.width)  / tileSize);
     int endY   = (int)ceilf((view.y + view.height) / tileSize);
 
-    for (int y = startY; y <= endY; y++) {
-        for (int x = startX; x <= endX; x++) {
+    for (int y = startY; y < endY; y++) {
+        for (int x = startX; x < endX; x++) {
             Color c = ((x + y) % 2 == 0) ? c1 : c2;
             DrawRectangle(x * tileSize, y * tileSize, tileSize, tileSize, c);
         }
