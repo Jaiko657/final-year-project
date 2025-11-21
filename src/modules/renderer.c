@@ -44,6 +44,17 @@ static Rectangle expand_rect(Rectangle r, float margin){
     };
 }
 
+static Rectangle intersect_rect(Rectangle a, Rectangle b){
+    float nx = fmaxf(a.x, b.x);
+    float ny = fmaxf(a.y, b.y);
+    float nw = fminf(a.x + a.width,  b.x + b.width)  - nx;
+    float nh = fminf(a.y + a.height, b.y + b.height) - ny;
+    if (nw <= 0.0f || nh <= 0.0f) {
+        return (Rectangle){0};
+    }
+    return (Rectangle){ nx, ny, nw, nh };
+}
+
 static bool rects_intersect(Rectangle a, Rectangle b){
     return a.x < b.x + b.width && a.x + a.width > b.x &&
            a.y < b.y + b.height && a.y + a.height > b.y;
@@ -133,7 +144,13 @@ static void DrawCheckerboardBackground(Rectangle view, int tileSize, Color c1, C
 }
 
 static void draw_world(const render_view_t* view) {
-    DrawCheckerboardBackground(view->padded_view, 32, DARKGRAY, BLACK);
+    int worldW = 0, worldH = 0;
+    ecs_get_world_size(&worldW, &worldH);
+    Rectangle worldRect = {0.0f, 0.0f, (float)worldW, (float)worldH};
+    Rectangle tiledRegion = intersect_rect(worldRect, view->padded_view);
+    if (tiledRegion.width > 0.0f && tiledRegion.height > 0.0f) {
+        DrawCheckerboardBackground(tiledRegion, 32, LIGHTGRAY, DARKGRAY);
+    }
 
     // ===== painter’s algorithm queue =====
     Item items[ECS_MAX_ENTITIES];
