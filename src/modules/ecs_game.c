@@ -10,8 +10,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-int init_entities(int W, int H)
+int init_entities()
 {
+    int W = 800;
+    int H = 600;
+
     tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
     tex_handle_t tex_coin       = asset_acquire_texture("assets/coin_gold.png");
     tex_handle_t tex_npc        = asset_acquire_texture("assets/npc.png");
@@ -27,7 +30,7 @@ int init_entities(int W, int H)
         pw*0.5f, ph*0.5f);
     cmp_add_player(player);
     cmp_add_inventory(player);
-    cmp_add_size(player, 12.0f, 12.0f);
+    cmp_add_size(player, pw/2, ph/2);
     cmp_add_trigger(player, 2.0f, CMP_ITEM | CMP_COL);
 
     enum {

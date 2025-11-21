@@ -1,3 +1,4 @@
+#include "../includes/engine_types.h"
 #include "../includes/renderer.h"
 #include "../includes/ecs.h"
 #include "../includes/ecs_game.h"
@@ -163,13 +164,16 @@ static void draw_world_and_ui(void) {
     }
 }
 
-static void DrawCheckerboardBackground(int tileSize, Color c1, Color c2) {
-    const int w = GetScreenWidth();
-    const int h = GetScreenHeight();
+static void DrawCheckerboardBackground(int tileSize, int width, int height, Color c1, Color c2) {
+    // Clamp to screen size in case world is bigger than the window
+    const int sw = GetScreenWidth();
+    const int sh = GetScreenHeight();
 
-    // Number of tiles needed to fill the screen
-    const int cols = (w + tileSize - 1) / tileSize;
-    const int rows = (h + tileSize - 1) / tileSize;
+    if (width  > sw) width  = sw;
+    if (height > sh) height = sh;
+
+    const int cols = (width  + tileSize - 1) / tileSize;
+    const int rows = (height + tileSize - 1) / tileSize;
 
     for (int y = 0; y < rows; y++) {
         for (int x = 0; x < cols; x++) {
@@ -179,9 +183,21 @@ static void DrawCheckerboardBackground(int tileSize, Color c1, Color c2) {
     }
 }
 
+static void DrawBackground(void) {
+    // Entire screen outside the world is black
+    ClearBackground(BLACK);
+
+    v2f worldSize = ecs_get_world_size();
+    int worldW = (int)worldSize.x;
+    int worldH = (int)worldSize.y;
+
+    // Draw checkerboard only inside world bounds, from (0,0) to (worldW, worldH)
+    DrawCheckerboardBackground(16, worldW, worldH, DARKGRAY, BLACK);
+}
+
 void renderer_next_frame(void) {
     BeginDrawing();
-    DrawCheckerboardBackground(32, DARKGRAY, BLACK);
+    DrawBackground();
 
     draw_world_and_ui();
 

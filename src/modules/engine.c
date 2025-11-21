@@ -1,5 +1,4 @@
 #include "../includes/engine.h"
-
 #include "../includes/logger.h"
 #include "../includes/logger_raylib_adapter.h"
 #include "../includes/input.h"
@@ -10,9 +9,6 @@
 #include "../includes/renderer.h"
 
 #include "raylib.h"
-
-static int g_width  = 0;
-static int g_height = 0;
 
 static bool engine_init_subsystems(const char *title)
 {
@@ -25,9 +21,8 @@ static bool engine_init_subsystems(const char *title)
     asset_init();
     ecs_init();
     ecs_register_game_systems();
-    ecs_set_world_size(g_width, g_height);
 
-    if (!renderer_init(g_width, g_height, title, 0)) {
+    if (!renderer_init(1280, 720, title, 120)) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "renderer_init failed");
         return false;
     }
@@ -36,8 +31,7 @@ static bool engine_init_subsystems(const char *title)
     // camera_init();
     // world_init();
 
-    // game entities/assets
-    int texture_success = init_entities(g_width, g_height);
+    int texture_success = init_entities();
     if (texture_success != 0) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "init_entities failed (%d)", texture_success);
         return false;
@@ -46,13 +40,9 @@ static bool engine_init_subsystems(const char *title)
     return true;
 }
 
-bool engine_init(int width, int height, const char *title)
+bool engine_init(const char *title)
 {
-    g_width  = width;
-    g_height = height;
-
     if (!engine_init_subsystems(title)) {
-        // clean up whatever got initialised
         ecs_shutdown();
         asset_shutdown();
         renderer_shutdown();

@@ -2,10 +2,7 @@
 
 int main(void)
 {
-    const int W = 800;
-    const int H = 450;
-
-    if (!engine_init(W, H, "raylib + ECS: coins, vendor, hat")) {
+    if (!engine_init("raylib + ECS: coins, vendor, hat")) {
         return 1;
     }
 
