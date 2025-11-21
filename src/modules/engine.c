@@ -8,6 +8,7 @@
 #include "../includes/ecs_game.h"
 #include "../includes/toast.h"
 #include "../includes/renderer.h"
+#include "../includes/camera.h"
 
 #include "raylib.h"
 
@@ -26,6 +27,7 @@ static bool engine_init_subsystems(const char *title)
     ecs_init();
     ecs_register_game_systems();
     ecs_set_world_size(g_width, g_height);
+    camera_init();
 
     if (!renderer_init(g_width, g_height, title, 0)) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "renderer_init failed");
@@ -43,6 +45,17 @@ static bool engine_init_subsystems(const char *title)
         return false;
     }
 
+    int world_w = 0, world_h = 0;
+    ecs_get_world_size(&world_w, &world_h);
+    if (world_w <= 0) world_w = g_width;
+    if (world_h <= 0) world_h = g_height;
+
+    camera_config_t cam_cfg = camera_get_config();
+    cam_cfg.target   = ecs_find_player();
+    cam_cfg.position = v2f_make(world_w / 2.0f, world_h / 2.0f);
+    cam_cfg.bounds   = rectf_xywh(0.0f, 0.0f, (float)world_w, (float)world_h);
+    camera_set_config(&cam_cfg);
+
     return true;
 }
 
@@ -56,6 +69,7 @@ bool engine_init(int width, int height, const char *title)
         ecs_shutdown();
         asset_shutdown();
         renderer_shutdown();
+        camera_shutdown();
         return false;
     }
     return true;
@@ -80,6 +94,8 @@ int engine_run(void)
         }
         ui_toast_update(frame);
 
+        camera_tick(frame);
+
         ecs_present(frame);
         renderer_next_frame(); // renderer owns asset lifecycle, calls collect, etc.
     }
@@ -92,4 +108,5 @@ void engine_shutdown(void)
     ecs_shutdown();
     asset_shutdown();
     renderer_shutdown();
+    camera_shutdown();
 }
