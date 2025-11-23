@@ -10,11 +10,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-int init_entities()
+int init_entities(int W, int H)
 {
-    int W = 800;
-    int H = 600;
-
     tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
     tex_handle_t tex_coin       = asset_acquire_texture("assets/coin_gold.png");
     tex_handle_t tex_npc        = asset_acquire_texture("assets/npc.png");
