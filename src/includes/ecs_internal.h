@@ -6,6 +6,11 @@
 // ===== Internal component storage types =====
 typedef struct { float x, y; } cmp_position_t;
 typedef struct { float x, y; smoothed_facing_t facing; } cmp_velocity_t;
+typedef struct {
+    ecs_entity_t target;
+    float desired_distance;
+    float max_speed;
+} cmp_follow_t;
 
 typedef struct {
     tex_handle_t tex;
@@ -48,6 +53,7 @@ extern uint32_t        ecs_gen[ECS_MAX_ENTITIES];
 extern uint32_t        ecs_next_gen[ECS_MAX_ENTITIES];
 extern cmp_position_t  cmp_pos[ECS_MAX_ENTITIES];
 extern cmp_velocity_t  cmp_vel[ECS_MAX_ENTITIES];
+extern cmp_follow_t    cmp_follow[ECS_MAX_ENTITIES];
 extern cmp_anim_t      cmp_anim[ECS_MAX_ENTITIES];
 extern cmp_sprite_t    cmp_spr[ECS_MAX_ENTITIES];
 extern cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];

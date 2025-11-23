@@ -121,6 +121,7 @@ int init_entities(int W, int H)
     cmp_add_sprite_handle(npc, tex_npc,
         (rectf){0,0,(float)nw,(float)nh},
         nw*0.5f, nh*0.5f);
+    cmp_add_velocity(npc, 0.0f, 0.0f, DIR_SOUTH);
     cmp_add_vendor(npc, ITEM_HAT, 3);
     cmp_add_size(npc, 12.0f, 16.0f);
 
@@ -273,7 +274,9 @@ static void try_buy_hat(ecs_entity_t player, ecs_entity_t vendor)
             cmp_billboard[ib].state = BILLBOARD_INACTIVE;
             //REMOVES HAT
             cmp_spr[ib].src.y += 16;
-            
+
+            cmp_add_follow(vendor, player, 30.0f, 90.0f);
+
         } else {
             ui_toast(1.5f, "Need %d coins for hat (you have %d).",
                      v.price, pInv->coins);

@@ -9,6 +9,7 @@ uint32_t        ecs_gen[ECS_MAX_ENTITIES];
 uint32_t        ecs_next_gen[ECS_MAX_ENTITIES];
 cmp_position_t  cmp_pos[ECS_MAX_ENTITIES];
 cmp_velocity_t  cmp_vel[ECS_MAX_ENTITIES];
+cmp_follow_t    cmp_follow[ECS_MAX_ENTITIES];
 cmp_anim_t      cmp_anim[ECS_MAX_ENTITIES];
 cmp_sprite_t    cmp_spr[ECS_MAX_ENTITIES];
 cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
@@ -187,6 +188,15 @@ void cmp_add_player(ecs_entity_t e)
     ecs_mask[i] |= CMP_PLAYER;
 }
 
+void cmp_add_follow(ecs_entity_t e, ecs_entity_t target, float desired_distance, float max_speed)
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+
+    cmp_follow[i] = (cmp_follow_t){ target, desired_distance, max_speed };
+    ecs_mask[i] |= CMP_FOLLOW;
+}
+
 void cmp_add_trigger(ecs_entity_t e, float pad, uint32_t target_mask){
     int i = ent_index_checked(e); if (i < 0) return;
     cmp_trigger[i] = (cmp_trigger_t){ pad, target_mask };
@@ -286,6 +296,49 @@ static void sys_input(float dt, const input_t* in)
     }
 }
 
+static void sys_follow(float dt)
+{
+    (void)dt;
+
+    for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
+        if (!ecs_alive_idx(e)) continue;
+        if ((ecs_mask[e] & (CMP_FOLLOW | CMP_POS | CMP_VEL)) != (CMP_FOLLOW | CMP_POS | CMP_VEL)) continue;
+
+        cmp_follow_t* f = &cmp_follow[e];
+        int target_idx = ent_index_checked(f->target);
+
+        if (target_idx < 0 || (ecs_mask[target_idx] & CMP_POS) == 0) {
+            cmp_vel[e].x = 0.0f;
+            cmp_vel[e].y = 0.0f;
+            continue;
+        }
+
+        float dx = cmp_pos[target_idx].x - cmp_pos[e].x;
+        float dy = cmp_pos[target_idx].y - cmp_pos[e].y;
+        float desired = f->desired_distance;
+
+        float dist2 = dx * dx + dy * dy;
+        if (dist2 <= desired * desired) {
+            cmp_vel[e].x = 0.0f;
+            cmp_vel[e].y = 0.0f;
+            continue;
+        }
+
+        float dist = sqrtf(dist2);
+        if (dist <= 0.0f || f->max_speed <= 0.0f) {
+            cmp_vel[e].x = 0.0f;
+            cmp_vel[e].y = 0.0f;
+            continue;
+        }
+
+        float dirx = dx / dist;
+        float diry = dy / dist;
+
+        cmp_vel[e].x = dirx * f->max_speed;
+        cmp_vel[e].y = diry * f->max_speed;
+    }
+}
+
 static void sys_physics(float dt)
 {
     for (int e=0; e<ECS_MAX_ENTITIES; ++e){
@@ -359,6 +412,7 @@ ecs_count_result_t ecs_count_entities(const uint32_t* masks, int num_masks)
 
 // =============== Adapters for system registry =========
 static void sys_input_adapt(float dt, const input_t* in) { sys_input(dt, in); }
+static void sys_follow_adapt(float dt, const input_t* in) { (void)in; sys_follow(dt); }
 static void sys_physics_adapt(float dt, const input_t* in) { (void)in; sys_physics(dt); }
 static void sys_bounds_adapt(float dt, const input_t* in) { (void)dt; (void)in; sys_bounds(); }
 static void sys_debug_binds_adapt(float dt, const input_t* in) { (void)dt; sys_debug_binds(in); }
@@ -378,6 +432,7 @@ static void ecs_register_builtin_systems(void)
 {
     ecs_register_system(PHASE_INPUT,    0,   sys_input_adapt, "input");
 
+    ecs_register_system(PHASE_PHYSICS,  50,  sys_follow_adapt,  "follow_ai");
     ecs_register_system(PHASE_SIM_PRE,  100, sys_prox_build_adapt,      "proximity_view");
     ecs_register_system(PHASE_SIM_PRE,  200, sys_anim_controller_adapt, "animation_controller");
 
