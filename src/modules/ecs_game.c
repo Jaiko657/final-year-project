@@ -27,8 +27,8 @@ int init_entities(int W, int H)
         pw*0.5f, ph*0.5f);
     cmp_add_player(player);
     cmp_add_inventory(player);
-    cmp_add_size(player, 12.0f, 12.0f);
-    cmp_add_trigger(player, 2.0f, CMP_ITEM | CMP_COL);
+    cmp_add_size(player, pw/2, ph/2);
+    cmp_add_trigger(player, 0.0f, CMP_ITEM | CMP_COL);
 
     enum {
         ANIM_WALK_N = 0,
@@ -82,7 +82,7 @@ int init_entities(int W, int H)
         ANIM_COUNT,
         frames_per_anim,
         anim_frames,
-        8.0f
+        6.0f
     );
 
     // ADD COINS
@@ -98,7 +98,7 @@ int init_entities(int W, int H)
             (rectf){0,0,(float)cw,(float)ch},
             cw*0.5f, ch*0.5f);
         cmp_add_item(c, ITEM_COIN);
-        cmp_add_size(c, cw * 0.5f, ch * 0.5f);
+        cmp_add_size(c, cw * 0.25f, ch * 0.25f);
 
         int frames_per_anim_coin[1] = { 8 };
         anim_frame_coord_t anim_frames_coin[1][MAX_FRAMES] = {

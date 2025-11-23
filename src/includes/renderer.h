@@ -8,7 +8,7 @@
 #define DEBUG_TRIGGERS 0
 #endif
 #ifndef DEBUG_FPS
-#define DEBUG_FPS 0
+#define DEBUG_FPS 1
 #endif
 
 // Creates the window and sets target fps.

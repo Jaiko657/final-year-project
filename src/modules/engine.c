@@ -12,9 +12,6 @@
 
 #include "raylib.h"
 
-static int g_width  = 0;
-static int g_height = 0;
-
 static bool engine_init_subsystems(const char *title)
 {
     logger_use_raylib();
@@ -26,44 +23,35 @@ static bool engine_init_subsystems(const char *title)
     asset_init();
     ecs_init();
     ecs_register_game_systems();
-    ecs_set_world_size(g_width, g_height);
+    int world_w = 32*10, world_h = 32*10;
+    ecs_set_world_size(world_w, world_h);
     camera_init();
 
-    if (!renderer_init(g_width, g_height, title, 0)) {
+    if (!renderer_init(1280, 720, title, 120)) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "renderer_init failed");
         return false;
     }
 
-    // here later you can add:
-    // camera_init();
-    // world_init();
-
     // game entities/assets
-    int texture_success = init_entities(g_width, g_height);
+    int texture_success = init_entities(32*10, 32*10);
     if (texture_success != 0) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "init_entities failed (%d)", texture_success);
         return false;
     }
 
-    int world_w = 0, world_h = 0;
-    ecs_get_world_size(&world_w, &world_h);
-    if (world_w <= 0) world_w = g_width;
-    if (world_h <= 0) world_h = g_height;
-
     camera_config_t cam_cfg = camera_get_config();
     cam_cfg.target   = ecs_find_player();
     cam_cfg.position = v2f_make(world_w / 2.0f, world_h / 2.0f);
     cam_cfg.bounds   = rectf_xywh(0.0f, 0.0f, (float)world_w, (float)world_h);
+    cam_cfg.zoom     = 3;
+    cam_cfg.stiffness = 25.0f;
     camera_set_config(&cam_cfg);
 
     return true;
 }
 
-bool engine_init(int width, int height, const char *title)
+bool engine_init(const char *title)
 {
-    g_width  = width;
-    g_height = height;
-
     if (!engine_init_subsystems(title)) {
         // clean up whatever got initialised
         ecs_shutdown();

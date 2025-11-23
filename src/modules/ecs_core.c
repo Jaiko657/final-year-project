@@ -20,8 +20,8 @@ static int free_stack[ECS_MAX_ENTITIES];
 static int free_top = 0;
 
 // Config
-static int g_worldW = 800;
-static int g_worldH = 450;
+static int g_worldW = 32*6;
+static int g_worldH = 32*6;
 
 // =============== Helpers ==================
 int ent_index_checked(ecs_entity_t e) {
@@ -242,7 +242,7 @@ static facing_t dir_from_input(const input_t* in, facing_t fallback)
 
 static void sys_input(float dt, const input_t* in)
 {
-    const float SPEED       = 200.0f;
+    const float SPEED       = 120.0f;
     const float CHANGE_TIME = 0.08f;   // 80 ms
 
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {

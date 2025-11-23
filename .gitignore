@@ -8,6 +8,7 @@
 
 # Ignore everything in the build folder
 /build/
+/.vscode/
 #windows raylib stuff
 /lib/
 /include/
