@@ -1,3 +1,4 @@
+#include "../includes/engine_types.h"
 #include "../includes/renderer.h"
 #include "../includes/ecs.h"
 #include "../includes/ecs_game.h"

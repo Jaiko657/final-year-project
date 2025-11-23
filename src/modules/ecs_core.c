@@ -195,7 +195,7 @@ void cmp_add_trigger(ecs_entity_t e, float pad, uint32_t target_mask){
 
 void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state){
     int i = ent_index_checked(e); if (i<0) return;
-    if ((ecs_mask[i]&(CMP_TRIGGER))==(CMP_TRIGGER)){
+    if ((ecs_mask[i]&(CMP_TRIGGER))!=(CMP_TRIGGER)){
         LOGC(LOGCAT_ECS, LOG_LVL_WARN, "Billboard added to entity without trigger. ENTITY: %i, %i", e.idx, e.gen);
     }
     strncpy(cmp_billboard[i].text, text, sizeof(cmp_billboard[i].text)-1);

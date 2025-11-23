@@ -1,5 +1,4 @@
 #include "../includes/engine.h"
-
 #include "../includes/logger.h"
 #include "../includes/logger_raylib_adapter.h"
 #include "../includes/input.h"
@@ -53,7 +52,6 @@ static bool engine_init_subsystems(const char *title)
 bool engine_init(const char *title)
 {
     if (!engine_init_subsystems(title)) {
-        // clean up whatever got initialised
         ecs_shutdown();
         asset_shutdown();
         renderer_shutdown();

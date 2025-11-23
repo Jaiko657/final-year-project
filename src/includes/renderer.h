@@ -2,10 +2,10 @@
 #include <stdbool.h>
 
 #ifndef DEBUG_COLLISION
-#define DEBUG_COLLISION 0
+#define DEBUG_COLLISION 1
 #endif
 #ifndef DEBUG_TRIGGERS
-#define DEBUG_TRIGGERS 0
+#define DEBUG_TRIGGERS 1
 #endif
 #ifndef DEBUG_FPS
 #define DEBUG_FPS 1
