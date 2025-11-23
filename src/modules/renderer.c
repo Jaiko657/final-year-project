@@ -6,6 +6,7 @@
 #include "../includes/asset_renderer_internal.h"
 #include "../includes/logger.h"
 #include "../includes/toast.h"
+#include "../includes/camera.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -35,6 +36,89 @@ static unsigned char u8(float x){
     return (unsigned char)(x * 255.0f + 0.5f);
 }
 
+static Rectangle expand_rect(Rectangle r, float margin){
+    return (Rectangle){
+        r.x - margin,
+        r.y - margin,
+        r.width + 2.0f * margin,
+        r.height + 2.0f * margin
+    };
+}
+
+static Rectangle intersect_rect(Rectangle a, Rectangle b){
+    float nx = fmaxf(a.x, b.x);
+    float ny = fmaxf(a.y, b.y);
+    float nw = fminf(a.x + a.width,  b.x + b.width)  - nx;
+    float nh = fminf(a.y + a.height, b.y + b.height) - ny;
+    if (nw <= 0.0f || nh <= 0.0f) {
+        return (Rectangle){0};
+    }
+    return (Rectangle){ nx, ny, nw, nh };
+}
+
+static bool rects_intersect(Rectangle a, Rectangle b){
+    return a.x < b.x + b.width && a.x + a.width > b.x &&
+           a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+static Rectangle sprite_bounds(const ecs_sprite_view_t* v){
+    float w = fabsf(v->src.w);
+    float h = fabsf(v->src.h);
+    return (Rectangle){ v->x - v->ox, v->y - v->oy, w, h };
+}
+
+#if DEBUG_COLLISION
+static Rectangle collider_bounds(const ecs_collider_view_t* c){
+    return (Rectangle){ c->x - c->hx, c->y - c->hy, 2.f * c->hx, 2.f * c->hy };
+}
+#endif
+
+#if DEBUG_TRIGGERS
+static Rectangle trigger_bounds(const ecs_trigger_view_t* c){
+    return (Rectangle){ c->x - c->hx - c->pad, c->y - c->hy - c->pad, 2.f * c->hx + 2.f * c->pad, 2.f * c->hy + 2.f * c->pad };
+}
+#endif
+
+static Rectangle billboard_bounds(const ecs_billboard_view_t* v, int fontSize){
+    int tw = MeasureText(v->text, fontSize);
+    float x = v->x - tw/2.0f - 6.0f;
+    float y = v->y + v->y_offset - 6.0f;
+    return (Rectangle){ x, y, (float)(tw + 12), 26.0f };
+}
+
+static Rectangle camera_view_rect(const Camera2D* cam){
+    float viewW = (float)GetScreenWidth()  / cam->zoom;
+    float viewH = (float)GetScreenHeight() / cam->zoom;
+    float left  = cam->target.x - cam->offset.x / cam->zoom;
+    float top   = cam->target.y - cam->offset.y / cam->zoom;
+    return (Rectangle){ left, top, viewW, viewH };
+}
+
+typedef struct {
+    Camera2D cam;
+    Rectangle view;
+    Rectangle padded_view;
+} render_view_t;
+
+static render_view_t build_camera_view(void){
+    camera_view_t logical = camera_get_view();
+    int sw = GetScreenWidth();
+    int sh = GetScreenHeight();
+
+    Camera2D cam = {
+        .target   = (Vector2){ logical.center.x, logical.center.y },
+        .offset   = (Vector2){ sw / 2.0f, sh / 2.0f },
+        .rotation = 0.0f,
+        .zoom     = logical.zoom > 0.0f ? logical.zoom : 1.0f
+    };
+
+    Rectangle view = camera_view_rect(&cam);
+    float margin = logical.padding >= 0.0f ? logical.padding : 0.0f;
+    Rectangle padded = expand_rect(view, margin);
+
+    return (render_view_t){ cam, view, padded };
+}
+
 bool renderer_init(int width, int height, const char* title, int target_fps) {
     InitWindow(width, height, title ? title : "Game");
     if (!IsWindowReady()) {
@@ -46,7 +130,29 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
     return true;
 }
 
-static void draw_world_and_ui(void) {
+static void DrawCheckerboardBackground(Rectangle view, int tileSize, Color c1, Color c2) {
+    int startX = (int)floorf(view.x / tileSize);
+    int startY = (int)floorf(view.y / tileSize);
+    int endX   = (int)ceilf((view.x + view.width)  / tileSize);
+    int endY   = (int)ceilf((view.y + view.height) / tileSize);
+
+    for (int y = startY; y < endY; y++) {
+        for (int x = startX; x < endX; x++) {
+            Color c = ((x + y) % 2 == 0) ? c1 : c2;
+            DrawRectangle(x * tileSize, y * tileSize, tileSize, tileSize, c);
+        }
+    }
+}
+
+static void draw_world(const render_view_t* view) {
+    int worldW = 0, worldH = 0;
+    ecs_get_world_size(&worldW, &worldH);
+    Rectangle worldRect = {0.0f, 0.0f, (float)worldW, (float)worldH};
+    Rectangle tiledRegion = intersect_rect(worldRect, view->padded_view);
+    if (tiledRegion.width > 0.0f && tiledRegion.height > 0.0f) {
+        DrawCheckerboardBackground(tiledRegion, 32, LIGHTGRAY, DARKGRAY);
+    }
+
     // ===== painter’s algorithm queue =====
     Item items[ECS_MAX_ENTITIES];
     int count = 0;
@@ -54,6 +160,9 @@ static void draw_world_and_ui(void) {
     for (ecs_sprite_iter_t it = ecs_sprites_begin(); ; ) {
         ecs_sprite_view_t v;
         if (!ecs_sprites_next(&it, &v)) break;
+
+        Rectangle bounds = sprite_bounds(&v);
+        if (!rects_intersect(bounds, view->padded_view)) continue;
 
         // depth: screen-space "feet"
         float feetY = v.y - v.oy + fabsf(v.src.h);
@@ -82,15 +191,17 @@ static void draw_world_and_ui(void) {
             if (!ecs_billboards_next(&it, &v)) break;
 
             const int fs = 18;
-            int tw = MeasureText(v.text, fs);
-            int x = (int)(v.x - tw/2);
+            Rectangle bb = billboard_bounds(&v, fs);
+            if (!rects_intersect(bb, view->padded_view)) continue;
+
+            int x = (int)(v.x - (bb.width - 12.0f)/2.0f);
             int y = (int)(v.y + v.y_offset);
 
             unsigned char a = u8(v.alpha);
             Color bg = (Color){ 0, 0, 0, (unsigned char)(a * 180 / 255) };
             Color fg = (Color){ 255, 255, 255, a };
 
-            DrawRectangle(x-6, y-6, tw+12, 26, bg);
+            DrawRectangle((int)bb.x, (int)bb.y, (int)bb.width, (int)bb.height, bg);
             DrawText(v.text, x, y, fs, fg);
         }
     }
@@ -101,10 +212,13 @@ static void draw_world_and_ui(void) {
         ecs_collider_view_t c;
         if (!ecs_colliders_next(&it, &c)) break;
 
-        int rx = (int)floorf(c.x - c.hx);
-        int ry = (int)floorf(c.y - c.hy);
-        int rw = (int)ceilf(2.f * c.hx);
-        int rh = (int)ceilf(2.f * c.hy);
+        Rectangle bounds = collider_bounds(&c);
+        if (!rects_intersect(bounds, view->padded_view)) continue;
+
+        int rx = (int)floorf(bounds.x);
+        int ry = (int)floorf(bounds.y);
+        int rw = (int)ceilf(bounds.width);
+        int rh = (int)ceilf(bounds.height);
         DrawRectangleLines(rx, ry, rw, rh, RED);
     }
 #endif
@@ -115,14 +229,19 @@ static void draw_world_and_ui(void) {
         ecs_trigger_view_t c;
         if (!ecs_triggers_next(&it, &c)) break;
 
-        int rx = (int)floorf(c.x - c.hx - c.pad);
-        int ry = (int)floorf(c.y - c.hy - c.pad);
-        int rw = (int)ceilf(2.f * c.hx + (2.f * c.pad));
-        int rh = (int)ceilf(2.f * c.hy + (2.f * c.pad));
+        Rectangle bounds = trigger_bounds(&c);
+        if (!rects_intersect(bounds, view->padded_view)) continue;
+
+        int rx = (int)floorf(bounds.x);
+        int ry = (int)floorf(bounds.y);
+        int rw = (int)ceilf(bounds.width);
+        int rh = (int)ceilf(bounds.height);
         DrawRectangleLines(rx, ry, rw, rh, GREEN);
     }
 #endif
+}
 
+static void draw_screen_space_ui(void) {
 #if DEBUG_FPS
     // ===== FPS overlay =====
     {
@@ -164,42 +283,17 @@ static void draw_world_and_ui(void) {
     }
 }
 
-static void DrawCheckerboardBackground(int tileSize, int width, int height, Color c1, Color c2) {
-    // Clamp to screen size in case world is bigger than the window
-    const int sw = GetScreenWidth();
-    const int sh = GetScreenHeight();
-
-    if (width  > sw) width  = sw;
-    if (height > sh) height = sh;
-
-    const int cols = (width  + tileSize - 1) / tileSize;
-    const int rows = (height + tileSize - 1) / tileSize;
-
-    for (int y = 0; y < rows; y++) {
-        for (int x = 0; x < cols; x++) {
-            Color c = ((x + y) % 2 == 0) ? c1 : c2;
-            DrawRectangle(x*tileSize, y*tileSize, tileSize, tileSize, c);
-        }
-    }
-}
-
-static void DrawBackground(void) {
-    // Entire screen outside the world is black
-    ClearBackground(BLACK);
-
-    v2f worldSize = ecs_get_world_size();
-    int worldW = (int)worldSize.x;
-    int worldH = (int)worldSize.y;
-
-    // Draw checkerboard only inside world bounds, from (0,0) to (worldW, worldH)
-    DrawCheckerboardBackground(16, worldW, worldH, DARKGRAY, BLACK);
-}
-
 void renderer_next_frame(void) {
     BeginDrawing();
-    DrawBackground();
+    ClearBackground(BLACK);
 
-    draw_world_and_ui();
+    render_view_t view = build_camera_view();
+
+    BeginMode2D(view.cam);
+    draw_world(&view);
+    EndMode2D();
+
+    draw_screen_space_ui();
 
     // Assets GC after drawing
     asset_collect();

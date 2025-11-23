@@ -20,11 +20,8 @@ static int free_stack[ECS_MAX_ENTITIES];
 static int free_top = 0;
 
 // Config
-int g_worldW = 16*48;
-int g_worldH = 16*27;
-v2f ecs_get_world_size() {
-    return v2f_make(g_worldW, g_worldH);
-}
+static int g_worldW = 32*6;
+static int g_worldH = 32*6;
 
 // =============== Helpers ==================
 int ent_index_checked(ecs_entity_t e) {
@@ -87,6 +84,34 @@ void ecs_shutdown(void){
 void ecs_set_world_size(int w, int h){
     g_worldW = w;
     g_worldH = h;
+}
+
+void ecs_get_world_size(int* out_w, int* out_h){
+    if (out_w) *out_w = g_worldW;
+    if (out_h) *out_h = g_worldH;
+}
+
+bool ecs_get_player_position(float* out_x, float* out_y){
+    ecs_entity_t player = find_player_handle();
+    int idx = ent_index_checked(player);
+    if (idx < 0 || !(ecs_mask[idx] & CMP_POS)) return false;
+
+    if (out_x) *out_x = cmp_pos[idx].x;
+    if (out_y) *out_y = cmp_pos[idx].y;
+    return true;
+}
+
+bool ecs_get_position(ecs_entity_t e, v2f* out_pos){
+    int idx = ent_index_checked(e);
+    if (idx < 0 || !(ecs_mask[idx] & CMP_POS)) return false;
+    if (out_pos) {
+        *out_pos = v2f_make(cmp_pos[idx].x, cmp_pos[idx].y);
+    }
+    return true;
+}
+
+ecs_entity_t ecs_find_player(void){
+    return find_player_handle();
 }
 
 // =============== Public: entity ===========
@@ -217,7 +242,7 @@ static facing_t dir_from_input(const input_t* in, facing_t fallback)
 
 static void sys_input(float dt, const input_t* in)
 {
-    const float SPEED       = 200.0f;
+    const float SPEED       = 120.0f;
     const float CHANGE_TIME = 0.08f;   // 80 ms
 
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
