@@ -6,6 +6,7 @@
 #include "../includes/ecs_game.h"
 #include "../includes/asset.h"
 #include "../includes/logger.h"
+#include "../includes/world.h"
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -17,10 +18,11 @@ int init_entities(int W, int H)
     tex_handle_t tex_npc        = asset_acquire_texture("assets/npc.png");
 
     int pw=16, ph=16, cw=32, ch=32, nw=16, nh=16;
+    v2f spawn = world_get_spawn_px();
 
     // ADD PLAYER
     ecs_entity_t player = ecs_create();
-    cmp_add_position(player, W/2.0f, H/2.0f);
+    cmp_add_position(player, spawn.x, spawn.y);
     cmp_add_velocity(player, 0, 0, DIR_SOUTH);
     cmp_add_sprite_handle(player, tex_player,
         (rectf){0,16,(float)pw,(float)ph},
@@ -88,8 +90,8 @@ int init_entities(int W, int H)
     // ADD COINS
     const v2f coinPos[3] = {
         { W/2.0f + 120.0f, H/2.0f },
-        { W/2.0f - 160.0f, H/2.0f - 60.0f },
-        { W/2.0f +  40.0f, H/2.0f + 90.0f }
+        { W/2.0f, H/2.0f - 60.0f },
+        { W/2.0f - 40.0f, H/2.0f + 110.0f }
     };
     for(int i=0;i<3;++i){
         ecs_entity_t c = ecs_create();
@@ -123,7 +125,7 @@ int init_entities(int W, int H)
         nw*0.5f, nh*0.5f);
     cmp_add_velocity(npc, 0.0f, 0.0f, DIR_SOUTH);
     cmp_add_vendor(npc, ITEM_HAT, 3);
-    cmp_add_size(npc, 12.0f, 16.0f);
+    cmp_add_size(npc, 6.0f, 6.0f);
 
     cmp_add_trigger(npc, 30.0f, CMP_PLAYER | CMP_COL);
     cmp_add_billboard(npc, "Press E to buy hat", -64.0f, 0.10f, BILLBOARD_ACTIVE);

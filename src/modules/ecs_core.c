@@ -1,5 +1,6 @@
 #include "../includes/ecs_internal.h"
 #include "../includes/logger.h"
+#include "../includes/world.h"
 #include <math.h>
 #include <string.h>
 
@@ -350,16 +351,127 @@ static void sys_physics(float dt)
     }
 }
 
+static bool tile_blocks(world_tile_t t){
+    return t == WORLD_TILE_SOLID || t == WORLD_TILE_VOID;
+}
+
+static bool aabb_intersect(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh){
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+// Resolve overlaps by pushing along the smallest penetration axis (per blocking tile).
+static void resolve_tile_collisions(float* x, float* y, float hx, float hy, float* vx_ptr, float* vy_ptr){
+    int ts = world_tile_size();
+    int tilesW = 0, tilesH = 0;
+    world_size_tiles(&tilesW, &tilesH);
+    if (tilesW <= 0 || tilesH <= 0 || ts <= 0) return;
+
+    for (int iter = 0; iter < 8; ++iter) {
+        float vx = vx_ptr ? *vx_ptr : 0.0f;
+        float vy = vy_ptr ? *vy_ptr : 0.0f;
+        float left   = *x - hx;
+        float right  = *x + hx;
+        float top    = *y - hy;
+        float bottom = *y + hy;
+
+        int tx0 = (int)floorf(left / (float)ts);
+        int tx1 = (int)floorf((right - 0.0001f) / (float)ts);
+        int ty0 = (int)floorf(top / (float)ts);
+        int ty1 = (int)floorf((bottom - 0.0001f) / (float)ts);
+
+        // Collect the smallest correction for this pass with velocity bias, then apply once.
+        // This avoids compounding pushes (jitter) while still resolving the relevant axis.
+        bool moved = false;
+        float best_dx = 0.0f, best_dy = 0.0f;
+        bool best_push_x = true;
+        float best_amount = 0.0f;
+        for (int ty = ty0; ty <= ty1; ++ty) {
+            for (int tx = tx0; tx <= tx1; ++tx) {
+                world_tile_t t = world_tile_at(tx, ty);
+                if (!tile_blocks(t)) continue;
+
+                float tileX = tx * (float)ts;
+                float tileY = ty * (float)ts;
+                float tileW = (float)ts;
+                float tileH = (float)ts;
+
+                if (!aabb_intersect(left, top, right - left, bottom - top, tileX, tileY, tileW, tileH)) {
+                    continue;
+                }
+
+                float overlapLeft   = right - tileX;
+                float overlapRight  = (tileX + tileW) - left;
+                float overlapTop    = bottom - tileY;
+                float overlapBottom = (tileY + tileH) - top;
+
+                float dx = (overlapLeft < overlapRight) ? -overlapLeft : overlapRight;
+                float dy = (overlapTop < overlapBottom) ? -overlapTop : overlapBottom;
+
+                float absdx = fabsf(dx);
+                float absdy = fabsf(dy);
+
+                bool push_x;
+                const float eps = 1e-5f;
+                if (absdx + eps < absdy) {
+                    push_x = true;
+                } else if (absdy + eps < absdx) {
+                    push_x = false;
+                } else {
+                    // Overlaps are effectively equal: break ties by dominant velocity, then X.
+                    float absVx = fabsf(vx);
+                    float absVy = fabsf(vy);
+                    if (absVx > absVy + eps) {
+                        push_x = true;
+                    } else if (absVy > absVx + eps) {
+                        push_x = false;
+                    } else {
+                        push_x = true;
+                    }
+                }
+
+                float amount = push_x ? absdx : absdy;
+                if (!moved || amount < best_amount) {
+                    moved = true;
+                    best_amount = amount;
+                    best_push_x = push_x;
+                    best_dx = dx;
+                    best_dy = dy;
+                }
+            }
+        }
+        if (moved) {
+            if (best_push_x) {
+                *x += best_dx;
+                if (vx_ptr) *vx_ptr = 0.0f; // prevent re-penetrating along the normal
+            } else {
+                *y += best_dy;
+                if (vy_ptr) *vy_ptr = 0.0f;
+            }
+        }
+        if (!moved) break;
+    }
+}
+
 static void sys_bounds(void)
 {
     int w=g_worldW, h=g_worldH;
+    world_size_px(&w, &h);
     for (int e=0; e<ECS_MAX_ENTITIES; ++e){
         if(!ecs_alive_idx(e)) continue;
         if (ecs_mask[e] & CMP_POS){
             if (ecs_mask[e] & CMP_COL){
                 float hx = cmp_col[e].hx, hy = cmp_col[e].hy;
-                cmp_pos[e].x = clampf(cmp_pos[e].x, hx, w - hx);
-                cmp_pos[e].y = clampf(cmp_pos[e].y, hy, h - hy);
+                float* vx_ptr = NULL;
+                float* vy_ptr = NULL;
+                if (ecs_mask[e] & CMP_VEL) {
+                    vx_ptr = &cmp_vel[e].x;
+                    vy_ptr = &cmp_vel[e].y;
+                }
+                float x = clampf(cmp_pos[e].x, hx, w - hx);
+                float y = clampf(cmp_pos[e].y, hy, h - hy);
+                resolve_tile_collisions(&x, &y, hx, hy, vx_ptr, vy_ptr);
+                cmp_pos[e].x = clampf(x, hx, w - hx);
+                cmp_pos[e].y = clampf(y, hy, h - hy);
             } else {
                 if(cmp_pos[e].x<0) cmp_pos[e].x=0;
                 if(cmp_pos[e].y<0) cmp_pos[e].y=0;

@@ -5,7 +5,7 @@
 #define DEBUG_COLLISION 1
 #endif
 #ifndef DEBUG_TRIGGERS
-#define DEBUG_TRIGGERS 1
+#define DEBUG_TRIGGERS 0
 #endif
 #ifndef DEBUG_FPS
 #define DEBUG_FPS 1

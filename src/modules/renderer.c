@@ -7,6 +7,7 @@
 #include "../includes/logger.h"
 #include "../includes/toast.h"
 #include "../includes/camera.h"
+#include "../includes/world.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -130,27 +131,31 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
     return true;
 }
 
-static void DrawCheckerboardBackground(Rectangle view, int tileSize, Color c1, Color c2) {
-    int startX = (int)floorf(view.x / tileSize);
-    int startY = (int)floorf(view.y / tileSize);
-    int endX   = (int)ceilf((view.x + view.width)  / tileSize);
-    int endY   = (int)ceilf((view.y + view.height) / tileSize);
-
-    for (int y = startY; y < endY; y++) {
-        for (int x = startX; x < endX; x++) {
-            Color c = ((x + y) % 2 == 0) ? c1 : c2;
-            DrawRectangle(x * tileSize, y * tileSize, tileSize, tileSize, c);
-        }
-    }
-}
-
 static void draw_world(const render_view_t* view) {
-    int worldW = 0, worldH = 0;
-    ecs_get_world_size(&worldW, &worldH);
-    Rectangle worldRect = {0.0f, 0.0f, (float)worldW, (float)worldH};
-    Rectangle tiledRegion = intersect_rect(worldRect, view->padded_view);
-    if (tiledRegion.width > 0.0f && tiledRegion.height > 0.0f) {
-        DrawCheckerboardBackground(tiledRegion, 32, LIGHTGRAY, DARKGRAY);
+    int tileSize = world_tile_size();
+    int tilesW = 0, tilesH = 0;
+    world_size_tiles(&tilesW, &tilesH);
+
+    Rectangle worldRect = {0.0f, 0.0f, (float)(tilesW * tileSize), (float)(tilesH * tileSize)};
+    Rectangle visible = intersect_rect(worldRect, view->padded_view);
+    if (visible.width > 0.0f && visible.height > 0.0f) {
+        int startX = (int)floorf(visible.x / tileSize);
+        int startY = (int)floorf(visible.y / tileSize);
+        int endX   = (int)ceilf((visible.x + visible.width) / tileSize);
+        int endY   = (int)ceilf((visible.y + visible.height) / tileSize);
+
+        if (startX < 0) startX = 0;
+        if (startY < 0) startY = 0;
+        if (endX > tilesW) endX = tilesW;
+        if (endY > tilesH) endY = tilesH;
+
+        for (int ty = startY; ty < endY; ++ty) {
+            for (int tx = startX; tx < endX; ++tx) {
+                if (world_tile_at(tx, ty) != WORLD_TILE_WALKABLE) continue;
+                Color c = ((tx + ty) % 2 == 0) ? LIGHTGRAY : DARKGRAY;
+                DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
+            }
+        }
     }
 
     // ===== painter’s algorithm queue =====

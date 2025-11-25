@@ -8,6 +8,7 @@
 #include "../includes/toast.h"
 #include "../includes/renderer.h"
 #include "../includes/camera.h"
+#include "../includes/world.h"
 
 #include "raylib.h"
 
@@ -22,7 +23,12 @@ static bool engine_init_subsystems(const char *title)
     asset_init();
     ecs_init();
     ecs_register_game_systems();
-    int world_w = 32*10, world_h = 32*10;
+    if (!world_load("assets/world.map")) {
+        LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to load world map");
+        return false;
+    }
+    int world_w = 0, world_h = 0;
+    world_size_px(&world_w, &world_h);
     ecs_set_world_size(world_w, world_h);
     camera_init();
 
@@ -40,7 +46,8 @@ static bool engine_init_subsystems(const char *title)
 
     camera_config_t cam_cfg = camera_get_config();
     cam_cfg.target   = ecs_find_player();
-    cam_cfg.position = v2f_make(world_w / 2.0f, world_h / 2.0f);
+    v2f spawn = world_get_spawn_px();
+    cam_cfg.position = spawn;
     cam_cfg.bounds   = rectf_xywh(0.0f, 0.0f, (float)world_w, (float)world_h);
     cam_cfg.zoom     = 3;
     cam_cfg.stiffness = 25.0f;
@@ -56,6 +63,7 @@ bool engine_init(const char *title)
         asset_shutdown();
         renderer_shutdown();
         camera_shutdown();
+        world_shutdown();
         return false;
     }
     return true;
@@ -95,4 +103,5 @@ void engine_shutdown(void)
     asset_shutdown();
     renderer_shutdown();
     camera_shutdown();
+    world_shutdown();
 }
