@@ -12,3 +12,4 @@
 #windows raylib stuff
 /lib/
 /include/
+count_lines.sh

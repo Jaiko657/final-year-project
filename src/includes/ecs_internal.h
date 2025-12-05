@@ -48,6 +48,24 @@ typedef struct {
     billboard_state_t state;
 } cmp_billboard_t;
 
+typedef struct {
+    liftable_state_t state;
+    ecs_entity_t carrier;
+    float height;
+    float vertical_velocity;
+    float carry_height;
+    float carry_distance;
+    float pickup_distance;
+    float pickup_radius;
+    float throw_speed;
+    float throw_vertical_speed;
+    float gravity;
+    float vx;
+    float vy;
+    float air_friction;
+    float bounce_damping;
+} cmp_liftable_t;
+
 // ===== Global ECS storage (defined in ecs_core.c) =====
 extern uint32_t        ecs_mask[ECS_MAX_ENTITIES];
 extern uint32_t        ecs_gen[ECS_MAX_ENTITIES];
@@ -61,6 +79,7 @@ extern cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
 extern cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
 extern cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
 extern cmp_phys_body_t cmp_phys_body[ECS_MAX_ENTITIES];
+extern cmp_liftable_t  cmp_liftable[ECS_MAX_ENTITIES];
 
 // ===== Internal helpers =====
 int  ent_index_checked(ecs_entity_t e);

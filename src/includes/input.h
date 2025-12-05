@@ -17,6 +17,7 @@ typedef enum {
     BTN_UP,
     BTN_DOWN,
     BTN_INTERACT,
+    BTN_LIFT,
     BTN_MOUSE_L,
     BTN_MOUSE_R,
     BTN_ASSET_DEBUG_PRINT,

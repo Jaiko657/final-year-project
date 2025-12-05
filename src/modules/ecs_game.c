@@ -127,6 +127,7 @@ int init_entities(int W, int H)
     cmp_add_velocity(npc, 0.0f, 0.0f, DIR_SOUTH);
     cmp_add_vendor(npc, ITEM_HAT, 3);
     cmp_add_size(npc, 6.0f, 6.0f);
+    cmp_add_liftable(npc);
     cmp_add_phys_body_default(npc, PHYS_DYNAMIC);
 
     cmp_add_trigger(npc, 30.0f, CMP_PLAYER | CMP_COL);

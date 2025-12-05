@@ -339,7 +339,7 @@ static void draw_screen_space_ui(void) {
         char hud[64];
         snprintf(hud, sizeof(hud), "Coins: %d  (%s)", coins, hasHat?"Hat ON":"No hat");
         DrawText(hud, 10, 10, 20, RAYWHITE);
-        DrawText("Move: Arrows/WASD | Interact: E", 10, 36, 18, GRAY);
+        DrawText("Move: Arrows/WASD | Interact: E | Lift/Throw: C", 10, 36, 18, GRAY);
     }
 }
 

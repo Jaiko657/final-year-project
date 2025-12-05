@@ -16,6 +16,7 @@ bool ecs_sprites_next(ecs_sprite_iter_t* it, ecs_sprite_view_t* out)
         if ((ecs_mask[i] & (CMP_POS | CMP_SPR)) != (CMP_POS | CMP_SPR)) continue;
 
         it->i = i;
+
         *out = (ecs_sprite_view_t){
             .tex = cmp_spr[i].tex,
             .src = cmp_spr[i].src,

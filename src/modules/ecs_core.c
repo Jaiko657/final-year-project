@@ -19,6 +19,7 @@ cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
 cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
 cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
 cmp_phys_body_t cmp_phys_body[ECS_MAX_ENTITIES];
+cmp_liftable_t  cmp_liftable[ECS_MAX_ENTITIES];
 
 // ========== O(1) create/delete ==========
 static int free_stack[ECS_MAX_ENTITIES];
@@ -30,6 +31,15 @@ static int g_worldH = 32*6;
 static const float PHYS_DEFAULT_MASS        = 1.0f;
 static const float PHYS_DEFAULT_RESTITUTION = 0.0f;
 static const float PHYS_DEFAULT_FRICTION    = 0.8f;
+static const float LIFTABLE_DEFAULT_CARRY_HEIGHT      = 18.0f;
+static const float LIFTABLE_DEFAULT_CARRY_DISTANCE    = 12.0f;
+static const float LIFTABLE_DEFAULT_PICKUP_DISTANCE   = 18.0f;
+static const float LIFTABLE_DEFAULT_PICKUP_RADIUS     = 10.0f;
+static const float LIFTABLE_DEFAULT_THROW_SPEED       = 220.0f;
+static const float LIFTABLE_DEFAULT_THROW_VERTICAL    = 260.0f;
+static const float LIFTABLE_DEFAULT_GRAVITY           = -720.0f;
+static const float LIFTABLE_DEFAULT_AIR_FRICTION      = 3.0f;
+static const float LIFTABLE_DEFAULT_BOUNCE_DAMPING    = 0.45f;
 
 // =============== Helpers ==================
 int ent_index_checked(ecs_entity_t e) {
@@ -87,6 +97,7 @@ static void resolve_tile_penetration(int i)
     const uint32_t req = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
     if ((ecs_mask[i] & req) != req) return;
     if (!cmp_phys_body[i].cp_body) return;
+    if ((ecs_mask[i] & CMP_LIFTABLE) && cmp_liftable[i].state != LIFTABLE_STATE_ONGROUND) return;
 
     int tiles_w = 0, tiles_h = 0;
     world_size_tiles(&tiles_w, &tiles_h);
@@ -324,6 +335,30 @@ void cmp_add_size(ecs_entity_t e, float hx, float hy)
     try_create_phys_body(i);
 }
 
+void cmp_add_liftable(ecs_entity_t e)
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    cmp_liftable[i] = (cmp_liftable_t){
+        .state              = LIFTABLE_STATE_ONGROUND,
+        .carrier            = ecs_null(),
+        .height             = 0.0f,
+        .vertical_velocity  = 0.0f,
+        .carry_height       = LIFTABLE_DEFAULT_CARRY_HEIGHT,
+        .carry_distance     = LIFTABLE_DEFAULT_CARRY_DISTANCE,
+        .pickup_distance    = LIFTABLE_DEFAULT_PICKUP_DISTANCE,
+        .pickup_radius      = LIFTABLE_DEFAULT_PICKUP_RADIUS,
+        .throw_speed        = LIFTABLE_DEFAULT_THROW_SPEED,
+        .throw_vertical_speed = LIFTABLE_DEFAULT_THROW_VERTICAL,
+        .gravity            = LIFTABLE_DEFAULT_GRAVITY,
+        .vx                 = 0.0f,
+        .vy                 = 0.0f,
+        .air_friction       = LIFTABLE_DEFAULT_AIR_FRICTION,
+        .bounce_damping     = LIFTABLE_DEFAULT_BOUNCE_DAMPING,
+    };
+    ecs_mask[i] |= CMP_LIFTABLE;
+}
+
 void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float restitution, float friction)
 {
     int i = ent_index_checked(e);
@@ -426,6 +461,14 @@ static void sys_follow(float dt)
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
         if (!ecs_alive_idx(e)) continue;
         if ((ecs_mask[e] & (CMP_FOLLOW | CMP_POS | CMP_VEL)) != (CMP_FOLLOW | CMP_POS | CMP_VEL)) continue;
+
+        if ((ecs_mask[e] & CMP_LIFTABLE) &&
+            cmp_liftable[e].state != LIFTABLE_STATE_ONGROUND)
+        {
+            cmp_vel[e].x = 0.0f;
+            cmp_vel[e].y = 0.0f;
+            continue;
+        }
 
         cmp_follow_t* f = &cmp_follow[e];
         int target_idx = ent_index_checked(f->target);
@@ -617,12 +660,18 @@ void sys_anim_controller_adapt(float dt, const input_t* in);
 void sys_prox_build_adapt(float dt, const input_t* in);
 void sys_billboards_adapt(float dt, const input_t* in);
 
+// from ecs_liftable.c
+void sys_liftable_input_adapt(float dt, const input_t* in);
+void sys_liftable_motion_adapt(float dt, const input_t* in);
+
 // =============== Registration =========
 static void ecs_register_builtin_systems(void)
 {
     ecs_register_system(PHASE_INPUT,    0,   sys_input_adapt, "input");
+    ecs_register_system(PHASE_INPUT,    50,  sys_liftable_input_adapt, "liftable_input");
 
     ecs_register_system(PHASE_PHYSICS,  50,  sys_follow_adapt,  "follow_ai");
+    ecs_register_system(PHASE_PHYSICS,  90,  sys_liftable_motion_adapt, "liftable_motion");
     ecs_register_system(PHASE_SIM_PRE,  200, sys_anim_controller_adapt, "animation_controller");
 
     ecs_register_system(PHASE_PHYSICS,  100, sys_physics_adapt, "physics");

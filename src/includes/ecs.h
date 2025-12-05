@@ -85,6 +85,12 @@ typedef struct {
 
 typedef enum { BILLBOARD_INACTIVE = 0, BILLBOARD_ACTIVE = 1 } billboard_state_t;
 
+typedef enum {
+    LIFTABLE_STATE_ONGROUND = 0,
+    LIFTABLE_STATE_CARRIED  = 1,
+    LIFTABLE_STATE_THROWN   = 2
+} liftable_state_t;
+
 typedef struct {
     float x, y;
     float y_offset;
@@ -124,6 +130,7 @@ void cmp_add_follow   (ecs_entity_t e, ecs_entity_t target, float desired_distan
 void cmp_add_trigger  (ecs_entity_t e, float pad, uint32_t target_mask);
 void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state);
 void cmp_add_size     (ecs_entity_t e, float hx, float hy); // AABB half-extents
+void cmp_add_liftable (ecs_entity_t e);
 void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float restitution, float friction);
 void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type);
 

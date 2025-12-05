@@ -56,6 +56,9 @@ void input_init_defaults(void){
     /* Interact: E */
     bind_add(BTN_INTERACT, KEY_E);
 
+    /* Lift/Throw: C */
+    bind_add(BTN_LIFT, KEY_C);
+
     /* Mouse buttons */
     bind_add(BTN_MOUSE_L, MOUSE_LEFT_BUTTON);
     bind_add(BTN_MOUSE_R, MOUSE_RIGHT_BUTTON);
