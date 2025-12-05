@@ -5,10 +5,12 @@
 #include "../includes/asset.h"
 #include "../includes/ecs.h"
 #include "../includes/ecs_game.h"
+#include "../includes/ecs_physics.h"
 #include "../includes/toast.h"
 #include "../includes/renderer.h"
 #include "../includes/camera.h"
 #include "../includes/world.h"
+#include "../includes/world_physics.h"
 
 #include "raylib.h"
 
@@ -27,6 +29,7 @@ static bool engine_init_subsystems(const char *title)
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to load world map");
         return false;
     }
+    world_physics_init();
     int world_w = 0, world_h = 0;
     world_size_px(&world_w, &world_h);
     ecs_set_world_size(world_w, world_h);
@@ -99,6 +102,8 @@ int engine_run(void)
 
 void engine_shutdown(void)
 {
+    ecs_phys_destroy_all();
+    world_physics_shutdown();
     ecs_shutdown();
     asset_shutdown();
     renderer_shutdown();

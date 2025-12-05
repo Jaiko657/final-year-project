@@ -20,6 +20,10 @@ typedef enum {
     BTN_MOUSE_L,
     BTN_MOUSE_R,
     BTN_ASSET_DEBUG_PRINT,
+    BTN_DEBUG_COLLIDER_0,
+    BTN_DEBUG_COLLIDER_1,
+    BTN_DEBUG_COLLIDER_2,
+    BTN_DEBUG_COLLIDER_3,
     BTN_COUNT               // <- Must be last as used to loop over enum until this point
 } button_t;
 

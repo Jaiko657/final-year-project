@@ -5,6 +5,7 @@
 #include "input.h"
 #include "asset.h"
 #include "ecs_systems.h"
+#include "ecs_physics.h"
 // TODO: ANIMATION SYSTEM IMPROVMENTS: locality bad, and fixed size bugs
 #define MAX_ANIMS  16
 #define MAX_FRAMES 16
@@ -31,8 +32,10 @@ typedef struct {
 } ecs_sprite_view_t;
 
 typedef struct {
-    float x, y; // center
-    float hx, hy; // half extents
+    float ecs_x, ecs_y;   // ECS transform center
+    float phys_x, phys_y; // Chipmunk body center (falls back to ECS if none)
+    float hx, hy;         // half extents
+    bool  has_phys;       // true if Chipmunk body is valid
 } ecs_collider_view_t;
 
 typedef struct {
@@ -121,6 +124,8 @@ void cmp_add_follow   (ecs_entity_t e, ecs_entity_t target, float desired_distan
 void cmp_add_trigger  (ecs_entity_t e, float pad, uint32_t target_mask);
 void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state);
 void cmp_add_size     (ecs_entity_t e, float hx, float hy); // AABB half-extents
+void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float restitution, float friction);
+void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type);
 
 // ====== Update & render ======
 void ecs_tick(float fixed_dt, const input_t* in);

@@ -1,5 +1,6 @@
 X(POS)
 X(VEL)
+X(PHYS_BODY)
 X(SPR)
 X(ANIM)
 X(PLAYER)

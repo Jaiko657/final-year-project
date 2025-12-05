@@ -1,6 +1,8 @@
 #include "../includes/ecs_internal.h"
 #include "../includes/logger.h"
 #include "../includes/world.h"
+#include "../includes/world_physics.h"
+#include "../includes/renderer.h"
 #include <math.h>
 #include <string.h>
 
@@ -16,6 +18,7 @@ cmp_sprite_t    cmp_spr[ECS_MAX_ENTITIES];
 cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
 cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
 cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
+cmp_phys_body_t cmp_phys_body[ECS_MAX_ENTITIES];
 
 // ========== O(1) create/delete ==========
 static int free_stack[ECS_MAX_ENTITIES];
@@ -24,6 +27,9 @@ static int free_top = 0;
 // Config
 static int g_worldW = 32*6;
 static int g_worldH = 32*6;
+static const float PHYS_DEFAULT_MASS        = 1.0f;
+static const float PHYS_DEFAULT_RESTITUTION = 0.0f;
+static const float PHYS_DEFAULT_FRICTION    = 0.8f;
 
 // =============== Helpers ==================
 int ent_index_checked(ecs_entity_t e) {
@@ -45,6 +51,13 @@ float clampf(float v, float a, float b){
     return (v < a) ? a : ((v > b) ? b : v);
 }
 
+static void set_position_sync_body(int i, float x, float y){
+    cmp_pos[i] = (cmp_position_t){ x, y };
+    if ((ecs_mask[i] & CMP_PHYS_BODY) && cmp_phys_body[i].cp_body) {
+        cpBodySetPosition(cmp_phys_body[i].cp_body, cpv(x, y));
+    }
+}
+
 ecs_entity_t find_player_handle(void){
     for (int i = 0; i < ECS_MAX_ENTITIES; ++i) {
         if (ecs_alive_idx(i) && (ecs_mask[i] & CMP_PLAYER)) {
@@ -59,6 +72,84 @@ static void cmp_sprite_release_idx(int i){
     if (asset_texture_valid(cmp_spr[i].tex)){
         asset_release_texture(cmp_spr[i].tex);
         cmp_spr[i].tex = (tex_handle_t){0,0};
+    }
+}
+
+static void try_create_phys_body(int i){
+    const uint32_t req = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
+    if ((ecs_mask[i] & req) != req) return;
+    if (cmp_phys_body[i].cp_body || cmp_phys_body[i].cp_shape) return;
+    ecs_phys_body_create_for_entity(i);
+}
+
+static void resolve_tile_penetration(int i)
+{
+    const uint32_t req = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
+    if ((ecs_mask[i] & req) != req) return;
+    if (!cmp_phys_body[i].cp_body) return;
+
+    int tiles_w = 0, tiles_h = 0;
+    world_size_tiles(&tiles_w, &tiles_h);
+    int tile_px = world_tile_size();
+    if (tiles_w <= 0 || tiles_h <= 0 || tile_px <= 0) return;
+
+    float hx = cmp_col[i].hx;
+    float hy = cmp_col[i].hy;
+    if (hx <= 0.0f || hy <= 0.0f) return;
+
+    float cx = cmp_pos[i].x;
+    float cy = cmp_pos[i].y;
+    float left = cx - hx;
+    float right = cx + hx;
+    float bottom = cy - hy;
+    float top = cy + hy;
+
+    int min_tx = (int)floorf(left / (float)tile_px);
+    int max_tx = (int)floorf(right / (float)tile_px);
+    int min_ty = (int)floorf(bottom / (float)tile_px);
+    int max_ty = (int)floorf(top / (float)tile_px);
+
+    if (min_tx < 0) min_tx = 0;
+    if (min_ty < 0) min_ty = 0;
+    if (max_tx >= tiles_w) max_tx = tiles_w - 1;
+    if (max_ty >= tiles_h) max_ty = tiles_h - 1;
+
+    bool moved = false;
+    for (int ty = min_ty; ty <= max_ty; ++ty) {
+        for (int tx = min_tx; tx <= max_tx; ++tx) {
+            if (world_tile_at(tx, ty) != WORLD_TILE_SOLID) continue;
+
+            float tile_left = (float)tx * (float)tile_px;
+            float tile_right = tile_left + (float)tile_px;
+            float tile_bottom = (float)ty * (float)tile_px;
+            float tile_top = tile_bottom + (float)tile_px;
+
+            if (right <= tile_left || left >= tile_right) continue;
+            if (top <= tile_bottom || bottom >= tile_top) continue;
+
+            float pen_x_left = right - tile_left;
+            float pen_x_right = tile_right - left;
+            float pen_y_bottom = top - tile_bottom;
+            float pen_y_top = tile_top - bottom;
+
+            float resolve_x = (pen_x_left < pen_x_right) ? -pen_x_left : pen_x_right;
+            float resolve_y = (pen_y_bottom < pen_y_top) ? -pen_y_bottom : pen_y_top;
+
+            if (fabsf(resolve_x) < fabsf(resolve_y)) {
+                cx += resolve_x;
+                left += resolve_x;
+                right += resolve_x;
+            } else {
+                cy += resolve_y;
+                bottom += resolve_y;
+                top += resolve_y;
+            }
+            moved = true;
+        }
+    }
+
+    if (moved) {
+        set_position_sync_body(i, cx, cy);
     }
 }
 
@@ -134,6 +225,11 @@ void ecs_destroy(ecs_entity_t e)
     if (idx < 0) return;
 
     cmp_sprite_release_idx(idx);
+    if (ecs_mask[idx] & CMP_PHYS_BODY) {
+        ecs_phys_body_destroy_for_entity(idx);
+        cmp_phys_body[idx].cp_body = NULL;
+        cmp_phys_body[idx].cp_shape = NULL;
+    }
 
     uint32_t g = ecs_gen[idx];
     g = (g + 1) ? (g + 1) : 1;
@@ -148,8 +244,9 @@ void cmp_add_position(ecs_entity_t e, float x, float y)
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
-    cmp_pos[i] = (cmp_position_t){ x, y };
     ecs_mask[i] |= CMP_POS;
+    set_position_sync_body(i, x, y);
+    try_create_phys_body(i);
 }
 
 void cmp_add_velocity(ecs_entity_t e, float x, float y, facing_t direction)
@@ -224,6 +321,31 @@ void cmp_add_size(ecs_entity_t e, float hx, float hy)
     if (i < 0) return;
     cmp_col[i] = (cmp_collider_t){ hx, hy };
     ecs_mask[i] |= CMP_COL;
+    try_create_phys_body(i);
+}
+
+void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float restitution, float friction)
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+
+    float inv_mass = (mass != 0.0f) ? (1.0f / mass) : 0.0f;
+    cmp_phys_body[i] = (cmp_phys_body_t){
+        .type = type,
+        .mass = mass,
+        .inv_mass = inv_mass,
+        .restitution = restitution,
+        .friction = friction,
+        .cp_body = NULL,
+        .cp_shape = NULL
+    };
+    ecs_mask[i] |= CMP_PHYS_BODY;
+    try_create_phys_body(i);
+}
+
+void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type)
+{
+    cmp_add_phys_body(e, type, PHYS_DEFAULT_MASS, PHYS_DEFAULT_RESTITUTION, PHYS_DEFAULT_FRICTION);
 }
 
 // =============== Systems (internal) ======
@@ -340,145 +462,90 @@ static void sys_follow(float dt)
     }
 }
 
-static void sys_physics(float dt)
+static void sys_physics_integrate_impl(float dt)
 {
-    for (int e=0; e<ECS_MAX_ENTITIES; ++e){
-        if(!ecs_alive_idx(e)) continue;
-        if ((ecs_mask[e]&(CMP_POS|CMP_VEL))==(CMP_POS|CMP_VEL)){
-            cmp_pos[e].x += cmp_vel[e].x * dt;
-            cmp_pos[e].y += cmp_vel[e].y * dt;
+    if (!world_physics_ready()) return;
+
+    // Ensure any newly-tagged entities create their Chipmunk bodies.
+    for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
+        if (!ecs_alive_idx(e)) continue;
+        const uint32_t req = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
+        if ((ecs_mask[e] & req) != req) continue;
+        if (!cmp_phys_body[e].cp_body && !cmp_phys_body[e].cp_shape) {
+            ecs_phys_body_create_for_entity(e);
         }
     }
-}
 
-static bool tile_blocks(world_tile_t t){
-    return t == WORLD_TILE_SOLID || t == WORLD_TILE_VOID;
-}
+    // Apply intent velocities to Chipmunk bodies.
+    for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
+        if (!ecs_alive_idx(e)) continue;
+        const uint32_t req = (CMP_VEL | CMP_PHYS_BODY);
+        if ((ecs_mask[e] & req) != req) continue;
 
-static bool aabb_intersect(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh){
-    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
-}
+        cmp_velocity_t*  v  = &cmp_vel[e];
+        cmp_phys_body_t* pb = &cmp_phys_body[e];
+        if (!pb->cp_body) continue;
 
-// Resolve overlaps by pushing along the smallest penetration axis (per blocking tile).
-static void resolve_tile_collisions(float* x, float* y, float hx, float hy, float* vx_ptr, float* vy_ptr){
-    int ts = world_tile_size();
-    int tilesW = 0, tilesH = 0;
-    world_size_tiles(&tilesW, &tilesH);
-    if (tilesW <= 0 || tilesH <= 0 || ts <= 0) return;
-
-    for (int iter = 0; iter < 8; ++iter) {
-        float vx = vx_ptr ? *vx_ptr : 0.0f;
-        float vy = vy_ptr ? *vy_ptr : 0.0f;
-        float left   = *x - hx;
-        float right  = *x + hx;
-        float top    = *y - hy;
-        float bottom = *y + hy;
-
-        int tx0 = (int)floorf(left / (float)ts);
-        int tx1 = (int)floorf((right - 0.0001f) / (float)ts);
-        int ty0 = (int)floorf(top / (float)ts);
-        int ty1 = (int)floorf((bottom - 0.0001f) / (float)ts);
-
-        // Collect the smallest correction for this pass with velocity bias, then apply once.
-        // This avoids compounding pushes (jitter) while still resolving the relevant axis.
-        bool moved = false;
-        float best_dx = 0.0f, best_dy = 0.0f;
-        bool best_push_x = true;
-        float best_amount = 0.0f;
-        for (int ty = ty0; ty <= ty1; ++ty) {
-            for (int tx = tx0; tx <= tx1; ++tx) {
-                world_tile_t t = world_tile_at(tx, ty);
-                if (!tile_blocks(t)) continue;
-
-                float tileX = tx * (float)ts;
-                float tileY = ty * (float)ts;
-                float tileW = (float)ts;
-                float tileH = (float)ts;
-
-                if (!aabb_intersect(left, top, right - left, bottom - top, tileX, tileY, tileW, tileH)) {
-                    continue;
-                }
-
-                float overlapLeft   = right - tileX;
-                float overlapRight  = (tileX + tileW) - left;
-                float overlapTop    = bottom - tileY;
-                float overlapBottom = (tileY + tileH) - top;
-
-                float dx = (overlapLeft < overlapRight) ? -overlapLeft : overlapRight;
-                float dy = (overlapTop < overlapBottom) ? -overlapTop : overlapBottom;
-
-                float absdx = fabsf(dx);
-                float absdy = fabsf(dy);
-
-                bool push_x;
-                const float eps = 1e-5f;
-                if (absdx + eps < absdy) {
-                    push_x = true;
-                } else if (absdy + eps < absdx) {
-                    push_x = false;
-                } else {
-                    // Overlaps are effectively equal: break ties by dominant velocity, then X.
-                    float absVx = fabsf(vx);
-                    float absVy = fabsf(vy);
-                    if (absVx > absVy + eps) {
-                        push_x = true;
-                    } else if (absVy > absVx + eps) {
-                        push_x = false;
-                    } else {
-                        push_x = true;
-                    }
-                }
-
-                float amount = push_x ? absdx : absdy;
-                if (!moved || amount < best_amount) {
-                    moved = true;
-                    best_amount = amount;
-                    best_push_x = push_x;
-                    best_dx = dx;
-                    best_dy = dy;
-                }
-            }
+        switch (pb->type) {
+            case PHYS_DYNAMIC:
+            case PHYS_KINEMATIC:
+                cpBodySetVelocity(pb->cp_body, cpv(v->x, v->y));
+                break;
+            default:
+                break;
         }
-        if (moved) {
-            if (best_push_x) {
-                *x += best_dx;
-                if (vx_ptr) *vx_ptr = 0.0f; // prevent re-penetrating along the normal
-            } else {
-                *y += best_dy;
-                if (vy_ptr) *vy_ptr = 0.0f;
-            }
-        }
-        if (!moved) break;
+
+        v->x = 0.0f;
+        v->y = 0.0f;
     }
-}
 
-static void sys_bounds(void)
-{
-    int w=g_worldW, h=g_worldH;
-    world_size_px(&w, &h);
-    for (int e=0; e<ECS_MAX_ENTITIES; ++e){
-        if(!ecs_alive_idx(e)) continue;
-        if (ecs_mask[e] & CMP_POS){
-            if (ecs_mask[e] & CMP_COL){
-                float hx = cmp_col[e].hx, hy = cmp_col[e].hy;
-                float* vx_ptr = NULL;
-                float* vy_ptr = NULL;
-                if (ecs_mask[e] & CMP_VEL) {
-                    vx_ptr = &cmp_vel[e].x;
-                    vy_ptr = &cmp_vel[e].y;
-                }
-                float x = clampf(cmp_pos[e].x, hx, w - hx);
-                float y = clampf(cmp_pos[e].y, hy, h - hy);
-                resolve_tile_collisions(&x, &y, hx, hy, vx_ptr, vy_ptr);
-                cmp_pos[e].x = clampf(x, hx, w - hx);
-                cmp_pos[e].y = clampf(y, hy, h - hy);
-            } else {
-                if(cmp_pos[e].x<0) cmp_pos[e].x=0;
-                if(cmp_pos[e].y<0) cmp_pos[e].y=0;
-                if(cmp_pos[e].x>w) cmp_pos[e].x=w;
-                if(cmp_pos[e].y>h) cmp_pos[e].y=h;
-            }
-        }
+    // Diagnostics around cpSpaceStep to catch hangs.
+    struct {
+        int bodies;
+        int shapes;
+    } counts = {0, 0};
+
+    static int dbg_frame = 0;
+    const int dbg_limit = 20;
+    bool dbg = dbg_frame < dbg_limit;
+    if (dbg) {
+        world_physics_counts_t c = world_physics_counts();
+        counts.bodies = c.bodies;
+        counts.shapes = c.shapes;
+        LOGC(LOGCAT_ECS, LOG_LVL_DEBUG,
+            "phys dbg pre-step #%d dt=%.4f bodies=%d shapes=%d",
+            dbg_frame, dt, counts.bodies, counts.shapes);
+    }
+
+    world_physics_step(dt);
+
+    if (dbg) {
+        world_physics_counts_t c = world_physics_counts();
+        counts.bodies = c.bodies;
+        counts.shapes = c.shapes;
+        LOGC(LOGCAT_ECS, LOG_LVL_DEBUG,
+            "phys dbg post-step #%d bodies=%d shapes=%d",
+            dbg_frame, counts.bodies, counts.shapes);
+        dbg_frame++;
+    }
+
+    // Sync Chipmunk positions back to ECS.
+    for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
+        if (!ecs_alive_idx(e)) continue;
+        const uint32_t req = (CMP_POS | CMP_PHYS_BODY);
+        if ((ecs_mask[e] & req) != req) continue;
+
+        cmp_phys_body_t* pb = &cmp_phys_body[e];
+        if (!pb->cp_body) continue;
+
+        cpVect p = cpBodyGetPosition(pb->cp_body);
+        cmp_pos[e].x = p.x;
+        cmp_pos[e].y = p.y;
+    }
+
+    for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
+        if (!ecs_alive_idx(e)) continue;
+        resolve_tile_penetration(e);
     }
 }
 
@@ -487,6 +554,18 @@ void sys_debug_binds(const input_t* in)
     if(input_pressed(in, BTN_ASSET_DEBUG_PRINT)) {
         asset_reload_all();
         asset_log_debug();
+    }
+
+    int new_mode = -1;
+    if (input_pressed(in, BTN_DEBUG_COLLIDER_0)) new_mode = COLLIDER_DEBUG_OFF;
+    else if (input_pressed(in, BTN_DEBUG_COLLIDER_1)) new_mode = COLLIDER_DEBUG_ECS;
+    else if (input_pressed(in, BTN_DEBUG_COLLIDER_2)) new_mode = COLLIDER_DEBUG_PHYSICS;
+    else if (input_pressed(in, BTN_DEBUG_COLLIDER_3)) new_mode = COLLIDER_DEBUG_BOTH;
+
+    if (new_mode >= 0) {
+        renderer_set_collider_debug_mode((collider_debug_mode_t)new_mode);
+        collider_debug_mode_t mode = renderer_get_collider_debug_mode();
+        ui_toast(1.0f, "Collider debug: %s", renderer_collider_debug_mode_label(mode));
     }
 }
 
@@ -525,8 +604,7 @@ ecs_count_result_t ecs_count_entities(const uint32_t* masks, int num_masks)
 // =============== Adapters for system registry =========
 static void sys_input_adapt(float dt, const input_t* in) { sys_input(dt, in); }
 static void sys_follow_adapt(float dt, const input_t* in) { (void)in; sys_follow(dt); }
-static void sys_physics_adapt(float dt, const input_t* in) { (void)in; sys_physics(dt); }
-static void sys_bounds_adapt(float dt, const input_t* in) { (void)dt; (void)in; sys_bounds(); }
+static void sys_physics_adapt(float dt, const input_t* in) { (void)in; sys_physics_integrate_impl(dt); }
 static void sys_debug_binds_adapt(float dt, const input_t* in) { (void)dt; sys_debug_binds(in); }
 
 // TODO: dont know if i like forward declaring like this
@@ -545,12 +623,11 @@ static void ecs_register_builtin_systems(void)
     ecs_register_system(PHASE_INPUT,    0,   sys_input_adapt, "input");
 
     ecs_register_system(PHASE_PHYSICS,  50,  sys_follow_adapt,  "follow_ai");
-    ecs_register_system(PHASE_SIM_PRE,  100, sys_prox_build_adapt,      "proximity_view");
     ecs_register_system(PHASE_SIM_PRE,  200, sys_anim_controller_adapt, "animation_controller");
 
     ecs_register_system(PHASE_PHYSICS,  100, sys_physics_adapt, "physics");
-    ecs_register_system(PHASE_PHYSICS,  200, sys_bounds_adapt,  "bounds");
 
+    ecs_register_system(PHASE_SIM_POST, 100, sys_prox_build_adapt,      "proximity_view");
     ecs_register_system(PHASE_SIM_POST, 200, sys_billboards_adapt, "billboards");
 
     ecs_register_system(PHASE_PRESENT,  100, sys_anim_sprite_adapt,"sprite_anim");

@@ -20,6 +20,34 @@ typedef struct {
     int   seq; //insertion order, tie breaker
 } Item;
 
+static collider_debug_mode_t g_collider_debug_mode = COLLIDER_DEBUG_ECS;
+static const char* g_collider_debug_names[COLLIDER_DEBUG_MODE_COUNT] = {
+    "off",
+    "ecs",
+    "chipmunk",
+    "both"
+};
+
+void renderer_set_collider_debug_mode(collider_debug_mode_t mode)
+{
+    if (mode < COLLIDER_DEBUG_OFF) mode = COLLIDER_DEBUG_OFF;
+    if (mode >= COLLIDER_DEBUG_MODE_COUNT) mode = COLLIDER_DEBUG_MODE_COUNT - 1;
+    g_collider_debug_mode = mode;
+}
+
+collider_debug_mode_t renderer_get_collider_debug_mode(void)
+{
+    return g_collider_debug_mode;
+}
+
+const char* renderer_collider_debug_mode_label(collider_debug_mode_t mode)
+{
+    if (mode < COLLIDER_DEBUG_OFF || mode >= COLLIDER_DEBUG_MODE_COUNT) {
+        mode = COLLIDER_DEBUG_OFF;
+    }
+    return g_collider_debug_names[mode];
+}
+
 static int cmp_item(const void* a, const void* b) {
     const Item* A = (const Item*)a;
     const Item* B = (const Item*)b;
@@ -69,8 +97,18 @@ static Rectangle sprite_bounds(const ecs_sprite_view_t* v){
 }
 
 #if DEBUG_COLLISION
-static Rectangle collider_bounds(const ecs_collider_view_t* c){
-    return (Rectangle){ c->x - c->hx, c->y - c->hy, 2.f * c->hx, 2.f * c->hy };
+static Rectangle collider_bounds_at(float x, float y, float hx, float hy){
+    return (Rectangle){ x - hx, y - hy, 2.f * hx, 2.f * hy };
+}
+
+static void draw_collider_outline(Rectangle bounds, const Rectangle* padded_view, Color color)
+{
+    if (!rects_intersect(bounds, *padded_view)) return;
+    int rx = (int)floorf(bounds.x);
+    int ry = (int)floorf(bounds.y);
+    int rw = (int)ceilf(bounds.width);
+    int rh = (int)ceilf(bounds.height);
+    DrawRectangleLines(rx, ry, rw, rh, color);
 }
 #endif
 
@@ -151,9 +189,19 @@ static void draw_world(const render_view_t* view) {
 
         for (int ty = startY; ty < endY; ++ty) {
             for (int tx = startX; tx < endX; ++tx) {
-                if (world_tile_at(tx, ty) != WORLD_TILE_WALKABLE) continue;
-                Color c = ((tx + ty) % 2 == 0) ? LIGHTGRAY : DARKGRAY;
-                DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
+                world_tile_t t = world_tile_at(tx, ty);
+                switch (t) {
+                    case WORLD_TILE_WALKABLE: {
+                        Color c = ((tx + ty) % 2 == 0) ? LIGHTGRAY : DARKGRAY;
+                        DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
+                    } break;
+                    case WORLD_TILE_SOLID: {
+                        Color c = BROWN;
+                        DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
+                    } break;
+                    default:
+                        break;
+                }
             }
         }
     }
@@ -212,19 +260,26 @@ static void draw_world(const render_view_t* view) {
     }
 
 #if DEBUG_COLLISION
-    // ===== collider debug outlines =====
-    for (ecs_collider_iter_t it = ecs_colliders_begin(); ; ) {
-        ecs_collider_view_t c;
-        if (!ecs_colliders_next(&it, &c)) break;
+    if (g_collider_debug_mode != COLLIDER_DEBUG_OFF) {
+        bool draw_ecs = (g_collider_debug_mode == COLLIDER_DEBUG_ECS || g_collider_debug_mode == COLLIDER_DEBUG_BOTH);
+        bool draw_phys = (g_collider_debug_mode == COLLIDER_DEBUG_PHYSICS || g_collider_debug_mode == COLLIDER_DEBUG_BOTH);
+        Color ecs_color = RED;
+        Color phys_color = BLUE;
 
-        Rectangle bounds = collider_bounds(&c);
-        if (!rects_intersect(bounds, view->padded_view)) continue;
+        for (ecs_collider_iter_t it = ecs_colliders_begin(); ; ) {
+            ecs_collider_view_t c;
+            if (!ecs_colliders_next(&it, &c)) break;
 
-        int rx = (int)floorf(bounds.x);
-        int ry = (int)floorf(bounds.y);
-        int rw = (int)ceilf(bounds.width);
-        int rh = (int)ceilf(bounds.height);
-        DrawRectangleLines(rx, ry, rw, rh, RED);
+            if (draw_ecs) {
+                Rectangle bounds = collider_bounds_at(c.ecs_x, c.ecs_y, c.hx, c.hy);
+                draw_collider_outline(bounds, &view->padded_view, ecs_color);
+            }
+
+            if (draw_phys && c.has_phys) {
+                Rectangle bounds = collider_bounds_at(c.phys_x, c.phys_y, c.hx, c.hy);
+                draw_collider_outline(bounds, &view->padded_view, phys_color);
+            }
+        }
     }
 #endif
 

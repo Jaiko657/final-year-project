@@ -1,5 +1,6 @@
 #include "../includes/ecs_internal.h"
 #include "../includes/logger.h"
+#include <chipmunk/chipmunk.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -38,9 +39,24 @@ bool ecs_colliders_next(ecs_collider_iter_t* it, ecs_collider_view_t* out)
         if ((ecs_mask[i] & (CMP_POS | CMP_COL)) != (CMP_POS | CMP_COL)) continue;
 
         it->i = i;
+        bool has_phys = ((ecs_mask[i] & CMP_PHYS_BODY) && cmp_phys_body[i].cp_body);
+        float ecs_x = cmp_pos[i].x;
+        float ecs_y = cmp_pos[i].y;
+        float phys_x = ecs_x;
+        float phys_y = ecs_y;
+        if (has_phys) {
+            cpVect p = cpBodyGetPosition(cmp_phys_body[i].cp_body);
+            phys_x = p.x;
+            phys_y = p.y;
+        }
         *out = (ecs_collider_view_t){
-            .x = cmp_pos[i].x, .y = cmp_pos[i].y,
-            .hx = cmp_col[i].hx, .hy = cmp_col[i].hy,
+            .ecs_x = ecs_x,
+            .ecs_y = ecs_y,
+            .phys_x = phys_x,
+            .phys_y = phys_y,
+            .hx    = cmp_col[i].hx,
+            .hy    = cmp_col[i].hy,
+            .has_phys = has_phys
         };
         return true;
     }

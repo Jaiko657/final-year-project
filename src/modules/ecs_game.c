@@ -30,6 +30,7 @@ int init_entities(int W, int H)
     cmp_add_player(player);
     cmp_add_inventory(player);
     cmp_add_size(player, pw/2, ph/2);
+    cmp_add_phys_body_default(player, PHYS_DYNAMIC);
     cmp_add_trigger(player, 0.0f, CMP_ITEM | CMP_COL);
 
     enum {
@@ -126,6 +127,7 @@ int init_entities(int W, int H)
     cmp_add_velocity(npc, 0.0f, 0.0f, DIR_SOUTH);
     cmp_add_vendor(npc, ITEM_HAT, 3);
     cmp_add_size(npc, 6.0f, 6.0f);
+    cmp_add_phys_body_default(npc, PHYS_DYNAMIC);
 
     cmp_add_trigger(npc, 30.0f, CMP_PLAYER | CMP_COL);
     cmp_add_billboard(npc, "Press E to buy hat", -64.0f, 0.10f, BILLBOARD_ACTIVE);

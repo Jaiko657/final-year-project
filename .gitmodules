@@ -1,0 +1,4 @@
+[submodule "third_party/Chipmunk2D"]
+	path = third_party/Chipmunk2D
+	url = https://github.com/slembcke/Chipmunk2D.git
+	ignore = dirty

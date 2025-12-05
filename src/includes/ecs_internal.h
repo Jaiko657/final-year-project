@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "ecs.h"
+#include "ecs_physics.h"
 
 // ===== Internal component storage types =====
 typedef struct { float x, y; } cmp_position_t;
@@ -59,6 +60,7 @@ extern cmp_sprite_t    cmp_spr[ECS_MAX_ENTITIES];
 extern cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
 extern cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
 extern cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
+extern cmp_phys_body_t cmp_phys_body[ECS_MAX_ENTITIES];
 
 // ===== Internal helpers =====
 int  ent_index_checked(ecs_entity_t e);
