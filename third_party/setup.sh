@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 THIRD_PARTY_DIR="$SCRIPT_DIR"
 PATCHES_DIR="$THIRD_PARTY_DIR/patches"
 
+git submodule update --init --recursive
+
 if [[ ! -d "$PATCHES_DIR" ]]; then
   echo "No patches directory at: $PATCHES_DIR"
   exit 0
