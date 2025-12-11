@@ -25,8 +25,8 @@ static bool engine_init_subsystems(const char *title)
     asset_init();
     ecs_init();
     ecs_register_game_systems();
-    if (!world_load("assets/world.map")) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to load world map");
+    if (!world_load_from_tmx("start.tmx", "walls")) {
+        LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to load world collision");
         return false;
     }
     world_physics_init();
@@ -37,6 +37,11 @@ static bool engine_init_subsystems(const char *title)
 
     if (!renderer_init(1280, 720, title, 120)) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "renderer_init failed");
+        return false;
+    }
+
+    if (!renderer_load_tiled_map("start.tmx")) {
+        LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to load TMX map");
         return false;
     }
 
@@ -52,7 +57,7 @@ static bool engine_init_subsystems(const char *title)
     v2f spawn = world_get_spawn_px();
     cam_cfg.position = spawn;
     cam_cfg.bounds   = rectf_xywh(0.0f, 0.0f, (float)world_w, (float)world_h);
-    cam_cfg.zoom     = 3;
+    cam_cfg.zoom     = 3.0f;
     cam_cfg.stiffness = 25.0f;
     camera_set_config(&cam_cfg);
 

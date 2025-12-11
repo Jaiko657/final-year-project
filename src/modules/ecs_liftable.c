@@ -198,24 +198,17 @@ static bool liftable_hits_tiles(float cx, float cy, float hx, float hy)
         }
     }
 
-    int tile_px = world_tile_size();
-    int tiles_w = 0, tiles_h = 0;
-    world_size_tiles(&tiles_w, &tiles_h);
-    if (tile_px <= 0 || tiles_w <= 0 || tiles_h <= 0) return false;
+    int ss = world_subtile_size();
+    if (ss <= 0) return false;
 
-    int min_tx = (int)floorf(left / (float)tile_px);
-    int max_tx = (int)floorf(right / (float)tile_px);
-    int min_ty = (int)floorf(bottom / (float)tile_px);
-    int max_ty = (int)floorf(top / (float)tile_px);
+    int min_sx = (int)floorf(left / (float)ss);
+    int max_sx = (int)floorf((right - 0.0001f) / (float)ss);
+    int min_sy = (int)floorf(bottom / (float)ss);
+    int max_sy = (int)floorf((top - 0.0001f) / (float)ss);
 
-    if (min_tx < 0) min_tx = 0;
-    if (min_ty < 0) min_ty = 0;
-    if (max_tx >= tiles_w) max_tx = tiles_w - 1;
-    if (max_ty >= tiles_h) max_ty = tiles_h - 1;
-
-    for (int ty = min_ty; ty <= max_ty; ++ty) {
-        for (int tx = min_tx; tx <= max_tx; ++tx) {
-            if (world_tile_at(tx, ty) == WORLD_TILE_SOLID) {
+    for (int sy = min_sy; sy <= max_sy; ++sy) {
+        for (int sx = min_sx; sx <= max_sx; ++sx) {
+            if (!world_is_walkable_subtile(sx, sy)) {
                 return true;
             }
         }

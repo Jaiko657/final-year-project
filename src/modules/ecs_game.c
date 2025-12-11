@@ -92,7 +92,7 @@ int init_entities(int W, int H)
     const v2f coinPos[3] = {
         { W/2.0f + 120.0f, H/2.0f },
         { W/2.0f, H/2.0f - 60.0f },
-        { W/2.0f - 40.0f, H/2.0f + 110.0f }
+        { W/2.0f - 40.0f, H/2.0f + 50.0f }
     };
     for(int i=0;i<3;++i){
         ecs_entity_t c = ecs_create();
@@ -131,7 +131,7 @@ int init_entities(int W, int H)
     cmp_add_phys_body_default(npc, PHYS_DYNAMIC);
 
     cmp_add_trigger(npc, 30.0f, CMP_PLAYER | CMP_COL);
-    cmp_add_billboard(npc, "Press E to buy hat", -64.0f, 0.10f, BILLBOARD_ACTIVE);
+    cmp_add_billboard(npc, "Press E to buy hat", -16.0f, 0.10f, BILLBOARD_ACTIVE);
 
     // Release setup refs (ECS added its own refs)
     asset_release_texture(tex_player);

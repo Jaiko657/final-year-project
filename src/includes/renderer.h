@@ -25,5 +25,6 @@ const char* renderer_collider_debug_mode_label(collider_debug_mode_t mode);
 
 // Creates the window and sets target fps.
 bool renderer_init(int width, int height, const char* title, int target_fps);
+bool renderer_load_tiled_map(const char* tmx_path);
 void renderer_next_frame(void);
 void renderer_shutdown(void);

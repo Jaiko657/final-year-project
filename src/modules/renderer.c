@@ -8,6 +8,7 @@
 #include "../includes/toast.h"
 #include "../includes/camera.h"
 #include "../includes/world.h"
+#include "../includes/tiled.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -28,6 +29,10 @@ static const char* g_collider_debug_names[COLLIDER_DEBUG_MODE_COUNT] = {
     "both"
 };
 
+static tiled_map_t g_tiled_map;
+static tiled_renderer_t g_tiled_renderer;
+static bool g_tiled_ready = false;
+
 void renderer_set_collider_debug_mode(collider_debug_mode_t mode)
 {
     if (mode < COLLIDER_DEBUG_OFF) mode = COLLIDER_DEBUG_OFF;
@@ -46,6 +51,43 @@ const char* renderer_collider_debug_mode_label(collider_debug_mode_t mode)
         mode = COLLIDER_DEBUG_OFF;
     }
     return g_collider_debug_names[mode];
+}
+
+static void renderer_unload_tiled(void)
+{
+    if (!g_tiled_ready) return;
+    tiled_renderer_shutdown(&g_tiled_renderer);
+    tiled_free_map(&g_tiled_map);
+    g_tiled_ready = false;
+}
+
+bool renderer_load_tiled_map(const char* tmx_path)
+{
+    renderer_unload_tiled();
+    if (!tmx_path) return false;
+    if (!tiled_load_map(tmx_path, &g_tiled_map)) {
+        LOGC(LOGCAT_REND, LOG_LVL_ERROR, "tiled: failed to load '%s'", tmx_path);
+        return false;
+    }
+    if (!tiled_renderer_init(&g_tiled_renderer, &g_tiled_map)) {
+        LOGC(LOGCAT_REND, LOG_LVL_ERROR, "tiled: renderer init failed for '%s'", tmx_path);
+        tiled_free_map(&g_tiled_map);
+        return false;
+    }
+
+    int world_w = 0, world_h = 0;
+    world_size_tiles(&world_w, &world_h);
+    if (world_w > 0 && world_h > 0 && (world_w != g_tiled_map.width || world_h != g_tiled_map.height)) {
+        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX size %dx%d differs from collision map %dx%d", g_tiled_map.width, g_tiled_map.height, world_w, world_h);
+    }
+    int tw = world_tile_size();
+    if (tw > 0 && tw != g_tiled_map.tilewidth) {
+        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX tilewidth %d differs from engine tile size %d", g_tiled_map.tilewidth, tw);
+    }
+
+    LOGC(LOGCAT_REND, LOG_LVL_INFO, "tiled: loaded '%s' (%dx%d @ %dx%d)", tmx_path, g_tiled_map.width, g_tiled_map.height, g_tiled_map.tilewidth, g_tiled_map.tileheight);
+    g_tiled_ready = true;
+    return true;
 }
 
 static int cmp_item(const void* a, const void* b) {
@@ -118,13 +160,6 @@ static Rectangle trigger_bounds(const ecs_trigger_view_t* c){
 }
 #endif
 
-static Rectangle billboard_bounds(const ecs_billboard_view_t* v, int fontSize){
-    int tw = MeasureText(v->text, fontSize);
-    float x = v->x - tw/2.0f - 6.0f;
-    float y = v->y + v->y_offset - 6.0f;
-    return (Rectangle){ x, y, (float)(tw + 12), 26.0f };
-}
-
 static Rectangle camera_view_rect(const Camera2D* cam){
     float viewW = (float)GetScreenWidth()  / cam->zoom;
     float viewH = (float)GetScreenHeight() / cam->zoom;
@@ -170,37 +205,41 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
 }
 
 static void draw_world(const render_view_t* view) {
-    int tileSize = world_tile_size();
-    int tilesW = 0, tilesH = 0;
-    world_size_tiles(&tilesW, &tilesH);
+    if (g_tiled_ready) {
+        tiled_renderer_draw(&g_tiled_map, &g_tiled_renderer, &view->padded_view);
+    } else {
+        int tileSize = world_tile_size();
+        int tilesW = 0, tilesH = 0;
+        world_size_tiles(&tilesW, &tilesH);
 
-    Rectangle worldRect = {0.0f, 0.0f, (float)(tilesW * tileSize), (float)(tilesH * tileSize)};
-    Rectangle visible = intersect_rect(worldRect, view->padded_view);
-    if (visible.width > 0.0f && visible.height > 0.0f) {
-        int startX = (int)floorf(visible.x / tileSize);
-        int startY = (int)floorf(visible.y / tileSize);
-        int endX   = (int)ceilf((visible.x + visible.width) / tileSize);
-        int endY   = (int)ceilf((visible.y + visible.height) / tileSize);
+        Rectangle worldRect = {0.0f, 0.0f, (float)(tilesW * tileSize), (float)(tilesH * tileSize)};
+        Rectangle visible = intersect_rect(worldRect, view->padded_view);
+        if (visible.width > 0.0f && visible.height > 0.0f) {
+            int startX = (int)floorf(visible.x / tileSize);
+            int startY = (int)floorf(visible.y / tileSize);
+            int endX   = (int)ceilf((visible.x + visible.width) / tileSize);
+            int endY   = (int)ceilf((visible.y + visible.height) / tileSize);
 
-        if (startX < 0) startX = 0;
-        if (startY < 0) startY = 0;
-        if (endX > tilesW) endX = tilesW;
-        if (endY > tilesH) endY = tilesH;
+            if (startX < 0) startX = 0;
+            if (startY < 0) startY = 0;
+            if (endX > tilesW) endX = tilesW;
+            if (endY > tilesH) endY = tilesH;
 
-        for (int ty = startY; ty < endY; ++ty) {
-            for (int tx = startX; tx < endX; ++tx) {
-                world_tile_t t = world_tile_at(tx, ty);
-                switch (t) {
-                    case WORLD_TILE_WALKABLE: {
-                        Color c = ((tx + ty) % 2 == 0) ? LIGHTGRAY : DARKGRAY;
-                        DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
-                    } break;
-                    case WORLD_TILE_SOLID: {
-                        Color c = BROWN;
-                        DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
-                    } break;
-                    default:
-                        break;
+            for (int ty = startY; ty < endY; ++ty) {
+                for (int tx = startX; tx < endX; ++tx) {
+                    world_tile_t t = world_tile_at(tx, ty);
+                    switch (t) {
+                        case WORLD_TILE_WALKABLE: {
+                            Color c = ((tx + ty) % 2 == 0) ? LIGHTGRAY : DARKGRAY;
+                            DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
+                        } break;
+                        case WORLD_TILE_SOLID: {
+                            Color c = BROWN;
+                            DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
+                        } break;
+                        default:
+                            break;
+                    }
                 }
             }
         }
@@ -235,28 +274,6 @@ static void draw_world(const render_view_t* view) {
         Vector2   origin = (Vector2){ v.ox, v.oy };
 
         DrawTexturePro(t, src, dst, origin, 0.0f, WHITE);
-    }
-
-    // ===== floating billboards (from proximity) =====
-    {
-        for (ecs_billboard_iter_t it = ecs_billboards_begin(); ; ) {
-            ecs_billboard_view_t v;
-            if (!ecs_billboards_next(&it, &v)) break;
-
-            const int fs = 18;
-            Rectangle bb = billboard_bounds(&v, fs);
-            if (!rects_intersect(bb, view->padded_view)) continue;
-
-            int x = (int)(v.x - (bb.width - 12.0f)/2.0f);
-            int y = (int)(v.y + v.y_offset);
-
-            unsigned char a = u8(v.alpha);
-            Color bg = (Color){ 0, 0, 0, (unsigned char)(a * 180 / 255) };
-            Color fg = (Color){ 255, 255, 255, a };
-
-            DrawRectangle((int)bb.x, (int)bb.y, (int)bb.width, (int)bb.height, bg);
-            DrawText(v.text, x, y, fs, fg);
-        }
     }
 
 #if DEBUG_COLLISION
@@ -301,7 +318,7 @@ static void draw_world(const render_view_t* view) {
 #endif
 }
 
-static void draw_screen_space_ui(void) {
+static void draw_screen_space_ui(const render_view_t* view) {
 #if DEBUG_FPS
     // ===== FPS overlay =====
     {
@@ -341,11 +358,49 @@ static void draw_screen_space_ui(void) {
         DrawText(hud, 10, 10, 20, RAYWHITE);
         DrawText("Move: Arrows/WASD | Interact: E | Lift/Throw: C", 10, 36, 18, GRAY);
     }
+
+    // ===== floating billboards (from proximity) =====
+    {
+        const int fs = 15; // slightly larger text
+        int sw = GetScreenWidth();
+        int sh = GetScreenHeight();
+        Rectangle screen_bounds = {0, 0, (float)sw, (float)sh};
+
+        for (ecs_billboard_iter_t it = ecs_billboards_begin(); ; ) {
+            ecs_billboard_view_t v;
+            if (!ecs_billboards_next(&it, &v)) break;
+
+            Vector2 world_pos = { v.x, v.y + v.y_offset };
+            Vector2 screen_pos = GetWorldToScreen2D(world_pos, view->cam);
+
+            int tw = MeasureText(v.text, fs);
+            float bb_w = (float)(tw + 12);
+            float bb_h = 26.0f;
+            Rectangle bb = {
+                screen_pos.x - (bb_w - 12.0f) / 2.0f,
+                screen_pos.y - 6.0f,
+                bb_w,
+                bb_h
+            };
+
+            if (!rects_intersect(bb, screen_bounds)) continue;
+
+            int x = (int)(bb.x + 6.0f);
+            int y = (int)screen_pos.y;
+
+            unsigned char a = u8(v.alpha);
+            Color bg = (Color){ 0, 0, 0, (unsigned char)(a * 120 / 255) }; // softer background
+            Color fg = (Color){ 255, 255, 255, a };
+
+            DrawRectangle((int)bb.x, (int)bb.y, (int)bb.width, (int)bb.height, bg);
+            DrawText(v.text, x, y, fs, fg);
+        }
+    }
 }
 
 void renderer_next_frame(void) {
     BeginDrawing();
-    ClearBackground(BLACK);
+    ClearBackground((Color){ 51, 60, 87, 255 } );
 
     render_view_t view = build_camera_view();
 
@@ -353,7 +408,7 @@ void renderer_next_frame(void) {
     draw_world(&view);
     EndMode2D();
 
-    draw_screen_space_ui();
+    draw_screen_space_ui(&view);
 
     // Assets GC after drawing
     asset_collect();
@@ -362,5 +417,6 @@ void renderer_next_frame(void) {
 }
 
 void renderer_shutdown(void) {
+    renderer_unload_tiled();
     if (IsWindowReady()) CloseWindow();
 }

@@ -1,9 +1,11 @@
-#include "tiled_parser.h"
+#include "../includes/tiled.h"
+
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
-#include "../third_party/xml.c/src/xml.h"
+#include <strings.h>
+#include "xml.h"
 
 static char *xstrdup(const char *s) {
     if (!s) return NULL;
@@ -61,15 +63,6 @@ static bool node_name_is(struct xml_node *node, const char *name) {
     return xml_string_equals(xml_node_name(node), name);
 }
 
-static void free_tileset_animations(tiled_tileset_t *ts) {
-    if (!ts || !ts->anims) return;
-    for (int i = 0; i < ts->tilecount; ++i) {
-        free(ts->anims[i].frames);
-    }
-    free(ts->anims);
-    ts->anims = NULL;
-}
-
 static bool file_exists(const char *path) {
     if (!path || !*path) return false;
     FILE *f = fopen(path, "rb");
@@ -78,6 +71,39 @@ static bool file_exists(const char *path) {
         return true;
     }
     return false;
+}
+
+static bool parse_bool_str(const char *s) {
+    if (!s) return false;
+    if (*s == '\0') return true;
+    if (strcasecmp(s, "true") == 0 || strcmp(s, "1") == 0 || strcasecmp(s, "yes") == 0 || strcasecmp(s, "on") == 0) return true;
+    return false;
+}
+
+// Expects "[abcd],[efgh],[ijkl],[mnop]" where each char is 0/1; builds 4x4 bitmask row-major
+static uint16_t parse_collider_mask(const char *s, bool *out_ok) {
+    if (out_ok) *out_ok = false;
+    if (!s) return 0;
+    uint16_t mask = 0;
+    int row = 0;
+    const char *p = s;
+    while (*p && row < 4) {
+        while (*p && *p != '[') p++;
+        if (!*p) break;
+        p++; // skip '['
+        for (int col = 0; col < 4 && *p && *p != ']'; ++col, ++p) {
+            if (*p == '1') {
+                int bit = row * 4 + col;
+                mask |= (uint16_t)(1u << bit);
+            }
+        }
+        while (*p && *p != ']') p++;
+        if (*p == ']') p++;
+        if (*p == ',') p++;
+        row++;
+    }
+    if (out_ok) *out_ok = (row > 0);
+    return mask;
 }
 
 static char *scan_attr_in_file(const char *path, const char *tag, const char *attr) {
@@ -175,68 +201,6 @@ static char *join_relative(const char *base_path, const char *rel) {
     return buf;
 }
 
-static bool parse_tile_animations(struct xml_node *tileset_node, tiled_tileset_t *out_tileset) {
-    if (!tileset_node || !out_tileset) return false;
-    if (out_tileset->tilecount <= 0) return true;
-
-    out_tileset->anims = (tiled_animation_t *)calloc((size_t)out_tileset->tilecount, sizeof(tiled_animation_t));
-    if (!out_tileset->anims) return false;
-
-    size_t child_count = xml_node_children(tileset_node);
-    for (size_t i = 0; i < child_count; ++i) {
-        struct xml_node *tile_node = xml_node_child(tileset_node, i);
-        if (!node_name_is(tile_node, "tile")) continue;
-
-        int tile_id = 0;
-        if (!node_attr_int(tile_node, "id", &tile_id)) continue;
-        if (tile_id < 0 || tile_id >= out_tileset->tilecount) continue;
-
-        struct xml_node *anim_node = NULL;
-        size_t tile_children = xml_node_children(tile_node);
-        for (size_t j = 0; j < tile_children; ++j) {
-            struct xml_node *child = xml_node_child(tile_node, j);
-            if (node_name_is(child, "animation")) {
-                anim_node = child;
-                break;
-            }
-        }
-        if (!anim_node) continue;
-
-        size_t anim_children = xml_node_children(anim_node);
-        size_t frame_count = 0;
-        for (size_t j = 0; j < anim_children; ++j) {
-            if (node_name_is(xml_node_child(anim_node, j), "frame")) {
-                frame_count++;
-            }
-        }
-        if (frame_count == 0) continue;
-
-        tiled_anim_frame_t *frames = (tiled_anim_frame_t *)calloc(frame_count, sizeof(tiled_anim_frame_t));
-        if (!frames) return false;
-
-        size_t fi = 0;
-        int total_ms = 0;
-        for (size_t j = 0; j < anim_children && fi < frame_count; ++j) {
-            struct xml_node *frame_node = xml_node_child(anim_node, j);
-            if (!node_name_is(frame_node, "frame")) continue;
-            int frame_tile = 0;
-            int duration = 0;
-            node_attr_int(frame_node, "tileid", &frame_tile);
-            node_attr_int(frame_node, "duration", &duration);
-            frames[fi].tile_id = frame_tile;
-            frames[fi].duration_ms = duration > 0 ? duration : 0;
-            total_ms += frames[fi].duration_ms;
-            fi++;
-        }
-
-        out_tileset->anims[tile_id].frames = frames;
-        out_tileset->anims[tile_id].frame_count = fi;
-        out_tileset->anims[tile_id].total_duration_ms = total_ms;
-    }
-
-    return true;
-}
-
 static bool parse_csv_gids(const char *csv, size_t expected, uint32_t *out) {
     if (!csv || !out) return false;
     size_t count = 0;
@@ -277,25 +241,48 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
         return false;
     }
 
+    out_tileset->colliders = (uint16_t *)calloc((size_t)out_tileset->tilecount, sizeof(uint16_t));
+    if (!out_tileset->colliders) {
+        xml_document_free(doc, true);
+        return false;
+    }
+
     struct xml_node *image = NULL;
     size_t children = xml_node_children(root);
     for (size_t i = 0; i < children; ++i) {
         struct xml_node *child = xml_node_child(root, i);
         if (node_name_is(child, "image")) {
             image = child;
-            break;
+        } else if (node_name_is(child, "tile")) {
+            int tile_id = 0;
+            if (!node_attr_int(child, "id", &tile_id)) continue;
+            if (tile_id < 0 || tile_id >= out_tileset->tilecount) continue;
+            size_t prop_children = xml_node_children(child);
+            for (size_t j = 0; j < prop_children; ++j) {
+                struct xml_node *props = xml_node_child(child, j);
+                if (!node_name_is(props, "properties")) continue;
+                size_t prop_count = xml_node_children(props);
+                for (size_t p = 0; p < prop_count; ++p) {
+                    struct xml_node *prop = xml_node_child(props, p);
+                    if (!node_name_is(prop, "property")) continue;
+                    char *pname = node_attr_strdup(prop, "name");
+                    if (!pname) continue;
+                    if (strcmp(pname, "collider") == 0) {
+                        char *pval = node_attr_strdup(prop, "value");
+                        bool ok = false;
+                        uint16_t mask = parse_collider_mask(pval, &ok);
+                        if (ok) out_tileset->colliders[tile_id] = mask;
+                        free(pval);
+                    }
+                    free(pname);
+                }
+            }
         }
     }
     if (!image) {
         fprintf(stderr, "No <image> in TSX\n");
+        free(out_tileset->colliders);
         xml_document_free(doc, true);
-        return false;
-    }
-
-    if (!parse_tile_animations(root, out_tileset)) {
-        fprintf(stderr, "Failed to parse tile animations\n");
-        xml_document_free(doc, true);
-        free_tileset_animations(out_tileset);
         return false;
     }
 
@@ -310,7 +297,7 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
     }
     if (!out_tileset->image_path) {
         fprintf(stderr, "Tileset missing image source\n");
-        free_tileset_animations(out_tileset);
+        free(out_tileset->colliders);
         return false;
     }
     return true;
@@ -326,23 +313,46 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
         return false;
     }
 
+    out_tileset->colliders = (uint16_t *)calloc((size_t)out_tileset->tilecount, sizeof(uint16_t));
+    if (!out_tileset->colliders) {
+        return false;
+    }
+
     struct xml_node *image = NULL;
     size_t children = xml_node_children(tileset_node);
     for (size_t i = 0; i < children; ++i) {
         struct xml_node *child = xml_node_child(tileset_node, i);
         if (node_name_is(child, "image")) {
             image = child;
-            break;
+        } else if (node_name_is(child, "tile")) {
+            int tile_id = 0;
+            if (!node_attr_int(child, "id", &tile_id)) continue;
+            if (tile_id < 0 || tile_id >= out_tileset->tilecount) continue;
+            size_t prop_children = xml_node_children(child);
+            for (size_t j = 0; j < prop_children; ++j) {
+                struct xml_node *props = xml_node_child(child, j);
+                if (!node_name_is(props, "properties")) continue;
+                size_t prop_count = xml_node_children(props);
+                for (size_t p = 0; p < prop_count; ++p) {
+                    struct xml_node *prop = xml_node_child(props, p);
+                    if (!node_name_is(prop, "property")) continue;
+                    char *pname = node_attr_strdup(prop, "name");
+                    if (!pname) continue;
+                    if (strcmp(pname, "collider") == 0) {
+                        char *pval = node_attr_strdup(prop, "value");
+                        bool ok = false;
+                        uint16_t mask = parse_collider_mask(pval, &ok);
+                        if (ok) out_tileset->colliders[tile_id] = mask;
+                        free(pval);
+                    }
+                    free(pname);
+                }
+            }
         }
     }
     if (!image) {
         fprintf(stderr, "Inline tileset has no <image>\n");
-        return false;
-    }
-
-    if (!parse_tile_animations(tileset_node, out_tileset)) {
-        fprintf(stderr, "Failed to parse inline tile animations\n");
-        free_tileset_animations(out_tileset);
+        free(out_tileset->colliders);
         return false;
     }
 
@@ -352,14 +362,12 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
     }
     if (!img_rel) {
         fprintf(stderr, "Inline tileset image missing source\n");
-        free_tileset_animations(out_tileset);
+        free(out_tileset->colliders);
         return false;
     }
     out_tileset->image_path = join_relative(tmx_path, img_rel);
     free(img_rel);
 
-    // xml.c seems to stop attributes at whitespace, so re-scan from the raw file
-    // if the resolved path doesn't point to an existing texture.
     if (!out_tileset->image_path || !file_exists(out_tileset->image_path)) {
         free(out_tileset->image_path);
         out_tileset->image_path = NULL;
@@ -375,7 +383,7 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
 
     if (!out_tileset->image_path) {
         fprintf(stderr, "Failed to resolve inline tileset image path\n");
-        free_tileset_animations(out_tileset);
+        free(out_tileset->colliders);
         return false;
     }
     return true;
@@ -390,8 +398,26 @@ static bool parse_layer(struct xml_node *layer_node, tiled_layer_t *out_layer) {
         return false;
     }
 
-    struct xml_node *data_node = NULL;
     size_t child_count = xml_node_children(layer_node);
+    for (size_t i = 0; i < child_count; ++i) {
+        struct xml_node *child = xml_node_child(layer_node, i);
+        if (!node_name_is(child, "properties")) continue;
+        size_t prop_count = xml_node_children(child);
+        for (size_t p = 0; p < prop_count; ++p) {
+            struct xml_node *prop = xml_node_child(child, p);
+            if (!node_name_is(prop, "property")) continue;
+            char *pname = node_attr_strdup(prop, "name");
+            if (!pname) continue;
+            if (strcmp(pname, "collision") == 0) {
+                char *pval = node_attr_strdup(prop, "value");
+                out_layer->collision = parse_bool_str(pval);
+                free(pval);
+            }
+            free(pname);
+        }
+    }
+
+    struct xml_node *data_node = NULL;
     for (size_t i = 0; i < child_count; ++i) {
         struct xml_node *child = xml_node_child(layer_node, i);
         if (node_name_is(child, "data")) {
@@ -463,7 +489,7 @@ static bool parse_layer(struct xml_node *layer_node, tiled_layer_t *out_layer) {
                 for (int x = 0; x < cw; ++x) {
                     size_t di = ((size_t)(cy + y) * (size_t)out_layer->width) + (size_t)(cx + x);
                     size_t si = (size_t)y * (size_t)cw + (size_t)x;
-                    if ((cx + x) < 0 || (cy + y) < 0 || di >= total) continue; // skip out-of-bounds chunks
+                    if ((cx + x) < 0 || (cy + y) < 0 || di >= total) continue;
                     out_layer->gids[di] = chunk_gids[si];
                 }
             }
@@ -496,9 +522,7 @@ static bool parse_layer(struct xml_node *layer_node, tiled_layer_t *out_layer) {
 }
 
 bool tiled_load_map(const char *tmx_path, tiled_map_t *out_map) {
-    if (!out_map) return false;
-    *out_map = (tiled_map_t){0};
-
+    memset(out_map, 0, sizeof(*out_map));
     struct xml_document *doc = load_xml_document(tmx_path);
     if (!doc) {
         fprintf(stderr, "Failed to parse TMX: %s\n", tmx_path);
@@ -511,141 +535,123 @@ bool tiled_load_map(const char *tmx_path, tiled_map_t *out_map) {
         return false;
     }
 
-    tiled_map_t result = {0};
-    if (!node_attr_int(root, "width", &result.width) ||
-        !node_attr_int(root, "height", &result.height) ||
-        !node_attr_int(root, "tilewidth", &result.tilewidth) ||
-        !node_attr_int(root, "tileheight", &result.tileheight)) {
+    if (!node_attr_int(root, "width", &out_map->width) ||
+        !node_attr_int(root, "height", &out_map->height) ||
+        !node_attr_int(root, "tilewidth", &out_map->tilewidth) ||
+        !node_attr_int(root, "tileheight", &out_map->tileheight)) {
         fprintf(stderr, "Map missing required attributes\n");
         xml_document_free(doc, true);
         return false;
     }
 
+    struct xml_node *tileset_node = NULL;
     size_t children = xml_node_children(root);
+    for (size_t i = 0; i < children; ++i) {
+        struct xml_node *child = xml_node_child(root, i);
+        if (node_name_is(child, "tileset")) {
+            tileset_node = child;
+            break;
+        }
+    }
+    if (!tileset_node) {
+        fprintf(stderr, "No <tileset> in TMX\n");
+        xml_document_free(doc, true);
+        return false;
+    }
+    if (!node_attr_int(tileset_node, "firstgid", &out_map->tileset.first_gid)) {
+        fprintf(stderr, "Tileset missing firstgid\n");
+        xml_document_free(doc, true);
+        return false;
+    }
+    int map_first_gid = out_map->tileset.first_gid;
+    char *tsx_rel = node_attr_strdup(tileset_node, "source");
+    bool tileset_ok = false;
+    if (tsx_rel && tsx_rel[0] != '\0') {
+        char *tsx_path = join_relative(tmx_path, tsx_rel);
+        free(tsx_rel);
+        if (!tsx_path) {
+            fprintf(stderr, "Could not resolve TSX path\n");
+            xml_document_free(doc, true);
+            return false;
+        }
+        if (parse_tileset(tsx_path, &out_map->tileset)) {
+            out_map->tileset.first_gid = map_first_gid;
+            char *img_path = join_relative(tsx_path, out_map->tileset.image_path);
+            free(out_map->tileset.image_path);
+            out_map->tileset.image_path = img_path;
+        } else {
+            char *img_rel = scan_attr_in_file(tsx_path, "<image", "source");
+            if (img_rel) {
+                out_map->tileset.image_path = join_relative(tsx_path, img_rel);
+                free(img_rel);
+            }
+        }
 
-    // Tilesets (support multiple tilesets in order)
-    size_t tileset_cap = 2;
-    result.tilesets = (tiled_tileset_t *)calloc(tileset_cap, sizeof(tiled_tileset_t));
-    if (!result.tilesets) {
+        if (!out_map->tileset.image_path || !file_exists(out_map->tileset.image_path)) {
+            free(out_map->tileset.image_path);
+            out_map->tileset.image_path = NULL;
+            char *img_rel = scan_attr_in_file(tsx_path, "<image", "source");
+            if (img_rel) {
+                out_map->tileset.image_path = join_relative(tsx_path, img_rel);
+                free(img_rel);
+            }
+        }
+        tileset_ok = out_map->tileset.image_path != NULL;
+        free(tsx_path);
+    } else {
+        free(tsx_rel);
+        tileset_ok = parse_tileset_inline(tileset_node, tmx_path, &out_map->tileset);
+        if (tileset_ok) {
+            out_map->tileset.first_gid = map_first_gid;
+        }
+    }
+    if (!tileset_ok) {
         xml_document_free(doc, true);
         return false;
     }
 
+    size_t layer_cap = 4;
+    tiled_layer_t *layers = (tiled_layer_t *)calloc(layer_cap, sizeof(tiled_layer_t));
+    if (!layers) {
+        xml_document_free(doc, true);
+        return false;
+    }
+
+    size_t layer_count = 0;
     bool ok = true;
     for (size_t i = 0; i < children; ++i) {
         struct xml_node *child = xml_node_child(root, i);
-        if (!node_name_is(child, "tileset")) continue;
-
-        if (result.tileset_count == tileset_cap) {
-            tileset_cap *= 2;
-            tiled_tileset_t *tmp = (tiled_tileset_t *)realloc(result.tilesets, tileset_cap * sizeof(tiled_tileset_t));
-            if (!tmp) {
-                ok = false;
-                break;
-            }
-            result.tilesets = tmp;
-        }
-
-        int first_gid = 0;
-        if (!node_attr_int(child, "firstgid", &first_gid)) {
-            fprintf(stderr, "Tileset missing firstgid\n");
-            ok = false;
-            break;
-        }
-
-        char *tsx_rel = node_attr_strdup(child, "source");
-        bool tileset_ok = false;
-        tiled_tileset_t *ts = &result.tilesets[result.tileset_count];
-
-        if (tsx_rel && tsx_rel[0] != '\0') {
-            char *tsx_path = join_relative(tmx_path, tsx_rel);
-            free(tsx_rel);
-            if (!tsx_path) {
-                fprintf(stderr, "Could not resolve TSX path\n");
-            } else {
-                if (parse_tileset(tsx_path, ts)) {
-                    ts->first_gid = first_gid;
-                    char *img_path = join_relative(tsx_path, ts->image_path);
-                    free(ts->image_path);
-                    ts->image_path = img_path;
-                } else {
-                    char *img_rel = scan_attr_in_file(tsx_path, "<image", "source");
-                    if (img_rel) {
-                        ts->image_path = join_relative(tsx_path, img_rel);
-                        free(img_rel);
-                    }
-                }
-
-                if (!ts->image_path || !file_exists(ts->image_path)) {
-                    free(ts->image_path);
-                    ts->image_path = NULL;
-                    char *img_rel = scan_attr_in_file(tsx_path, "<image", "source");
-                    if (img_rel) {
-                        ts->image_path = join_relative(tsx_path, img_rel);
-                        free(img_rel);
-                    }
-                }
-                tileset_ok = ts->image_path != NULL;
-                free(tsx_path);
-            }
-        } else {
-            free(tsx_rel);
-            tileset_ok = parse_tileset_inline(child, tmx_path, ts);
-            if (tileset_ok) {
-                ts->first_gid = first_gid;
-            }
-        }
-
-        if (!tileset_ok) {
-            fprintf(stderr, "Failed to parse tileset for map\n");
-            ok = false;
-            break;
-        }
-        result.tileset_count++;
-    }
-
-    if (!ok || result.tileset_count == 0) {
-        xml_document_free(doc, true);
-        tiled_free_map(&result);
-        return false;
-    }
-
-    // Layers
-    size_t layer_cap = 4;
-    result.layers = (tiled_layer_t *)calloc(layer_cap, sizeof(tiled_layer_t));
-    if (!result.layers) {
-        xml_document_free(doc, true);
-        tiled_free_map(&result);
-        return false;
-    }
-
-    for (size_t i = 0; i < children; ++i) {
-        struct xml_node *child = xml_node_child(root, i);
         if (!node_name_is(child, "layer")) continue;
-        if (result.layer_count == layer_cap) {
+        if (layer_count == layer_cap) {
             layer_cap *= 2;
-            tiled_layer_t *tmp = (tiled_layer_t *)realloc(result.layers, layer_cap * sizeof(tiled_layer_t));
+            tiled_layer_t *tmp = (tiled_layer_t *)realloc(layers, layer_cap * sizeof(tiled_layer_t));
             if (!tmp) {
                 ok = false;
                 break;
             }
-            result.layers = tmp;
+            layers = tmp;
         }
-        if (!parse_layer(child, &result.layers[result.layer_count])) {
+        if (!parse_layer(child, &layers[layer_count])) {
             ok = false;
             break;
         }
-        result.layer_count++;
+        layer_count++;
     }
 
     xml_document_free(doc, true);
 
     if (!ok) {
-        tiled_free_map(&result);
+        tiled_map_t cleanup = {0};
+        cleanup.layers = layers;
+        cleanup.layer_count = layer_count;
+        cleanup.tileset.image_path = out_map->tileset.image_path;
+        tiled_free_map(&cleanup);
+        out_map->tileset.image_path = NULL;
         return false;
     }
 
-    *out_map = result;
+    out_map->layers = layers;
+    out_map->layer_count = layer_count;
     return true;
 }
 
@@ -657,13 +663,7 @@ void tiled_free_map(tiled_map_t *map) {
         free(l->gids);
     }
     free(map->layers);
-    if (map->tilesets) {
-        for (size_t i = 0; i < map->tileset_count; ++i) {
-            tiled_tileset_t *ts = &map->tilesets[i];
-            free_tileset_animations(ts);
-            free(ts->image_path);
-        }
-    }
-    free(map->tilesets);
+    free(map->tileset.image_path);
+    free(map->tileset.colliders);
     *map = (tiled_map_t){0};
 }

@@ -47,33 +47,43 @@ static void create_world_tiles(void)
     int tiles_w = 0, tiles_h = 0;
     world_size_tiles(&tiles_w, &tiles_h);
     const int tile_px = world_tile_size();
-    if (tiles_w <= 0 || tiles_h <= 0 || tile_px <= 0) return;
+    const int subtile_px = world_subtile_size();
+    if (tiles_w <= 0 || tiles_h <= 0 || tile_px <= 0 || subtile_px <= 0) return;
 
-    size_t capacity = (size_t)tiles_w * (size_t)tiles_h;
+    int subtiles_per_tile = tile_px / subtile_px;
+    if (subtiles_per_tile <= 0) return;
+
+    size_t capacity = (size_t)tiles_w * (size_t)tiles_h * (size_t)(subtiles_per_tile * subtiles_per_tile);
     if (capacity == 0) return;
 
     g_tile_shapes = (cpShape**)calloc(capacity, sizeof(cpShape*));
     if (!g_tile_shapes) return;
 
     cpBody* static_body = cpSpaceGetStaticBody(g_space);
-    const cpFloat tile_size = (cpFloat)tile_px;
+    const cpFloat subtile_size = (cpFloat)subtile_px;
 
     for (int ty = 0; ty < tiles_h; ++ty) {
         for (int tx = 0; tx < tiles_w; ++tx) {
-            if (world_tile_at(tx, ty) != WORLD_TILE_SOLID) continue;
+            for (int sy = 0; sy < subtiles_per_tile; ++sy) {
+                for (int sx = 0; sx < subtiles_per_tile; ++sx) {
+                    int global_sx = tx * subtiles_per_tile + sx;
+                    int global_sy = ty * subtiles_per_tile + sy;
+                    if (world_is_walkable_subtile(global_sx, global_sy)) continue;
 
-            const cpFloat left   = (cpFloat)tx * tile_size;
-            const cpFloat bottom = (cpFloat)ty * tile_size;
-            const cpFloat right  = left + tile_size;
-            const cpFloat top    = bottom + tile_size;
+                    const cpFloat left   = (cpFloat)global_sx * subtile_size;
+                    const cpFloat bottom = (cpFloat)global_sy * subtile_size;
+                    const cpFloat right  = left + subtile_size;
+                    const cpFloat top    = bottom + subtile_size;
 
-            cpShape* shape = cpBoxShapeNew2(static_body, cpBBNew(left, bottom, right, top), 0.0f);
-            if (!shape) continue;
+                    cpShape* shape = cpBoxShapeNew2(static_body, cpBBNew(left, bottom, right, top), 0.0f);
+                    if (!shape) continue;
 
-            cpShapeSetFriction(shape, 1.0f);
-            cpShapeSetElasticity(shape, 0.0f);
-            cpSpaceAddShape(g_space, shape);
-            g_tile_shapes[g_tile_shape_count++] = shape;
+                    cpShapeSetFriction(shape, 1.0f);
+                    cpShapeSetElasticity(shape, 0.0f);
+                    cpSpaceAddShape(g_space, shape);
+                    g_tile_shapes[g_tile_shape_count++] = shape;
+                }
+            }
         }
     }
 

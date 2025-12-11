@@ -10,9 +10,11 @@ typedef enum {
 
 // Tile size is fixed for now (pixels per tile)
 int  world_tile_size(void);
+int  world_subtile_size(void);
 
 // Lifecycle
 bool world_load(const char* path);
+bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name);
 void world_shutdown(void);
 
 // Queries
@@ -20,4 +22,5 @@ void world_size_tiles(int* out_w, int* out_h);
 void world_size_px(int* out_w, int* out_h);
 world_tile_t world_tile_at(int tx, int ty);
 bool world_is_walkable_px(float x, float y);
+bool world_is_walkable_subtile(int sx, int sy);
 v2f  world_get_spawn_px(void);

@@ -102,7 +102,12 @@ static void resolve_tile_penetration(int i)
     int tiles_w = 0, tiles_h = 0;
     world_size_tiles(&tiles_w, &tiles_h);
     int tile_px = world_tile_size();
-    if (tiles_w <= 0 || tiles_h <= 0 || tile_px <= 0) return;
+    int subtile_px = world_subtile_size();
+    if (tiles_w <= 0 || tiles_h <= 0 || tile_px <= 0 || subtile_px <= 0) return;
+    int subtiles_per_tile = tile_px / subtile_px;
+    if (subtiles_per_tile <= 0) return;
+    int subtiles_w = tiles_w * subtiles_per_tile;
+    int subtiles_h = tiles_h * subtiles_per_tile;
 
     float hx = cmp_col[i].hx;
     float hy = cmp_col[i].hy;
@@ -115,25 +120,25 @@ static void resolve_tile_penetration(int i)
     float bottom = cy - hy;
     float top = cy + hy;
 
-    int min_tx = (int)floorf(left / (float)tile_px);
-    int max_tx = (int)floorf(right / (float)tile_px);
-    int min_ty = (int)floorf(bottom / (float)tile_px);
-    int max_ty = (int)floorf(top / (float)tile_px);
+    int min_sx = (int)floorf(left / (float)subtile_px);
+    int max_sx = (int)floorf(right / (float)subtile_px);
+    int min_sy = (int)floorf(bottom / (float)subtile_px);
+    int max_sy = (int)floorf(top / (float)subtile_px);
 
-    if (min_tx < 0) min_tx = 0;
-    if (min_ty < 0) min_ty = 0;
-    if (max_tx >= tiles_w) max_tx = tiles_w - 1;
-    if (max_ty >= tiles_h) max_ty = tiles_h - 1;
+    if (min_sx < 0) min_sx = 0;
+    if (min_sy < 0) min_sy = 0;
+    if (max_sx >= subtiles_w) max_sx = subtiles_w - 1;
+    if (max_sy >= subtiles_h) max_sy = subtiles_h - 1;
 
     bool moved = false;
-    for (int ty = min_ty; ty <= max_ty; ++ty) {
-        for (int tx = min_tx; tx <= max_tx; ++tx) {
-            if (world_tile_at(tx, ty) != WORLD_TILE_SOLID) continue;
+    for (int sy = min_sy; sy <= max_sy; ++sy) {
+        for (int sx = min_sx; sx <= max_sx; ++sx) {
+            if (world_is_walkable_subtile(sx, sy)) continue;
 
-            float tile_left = (float)tx * (float)tile_px;
-            float tile_right = tile_left + (float)tile_px;
-            float tile_bottom = (float)ty * (float)tile_px;
-            float tile_top = tile_bottom + (float)tile_px;
+            float tile_left = (float)sx * (float)subtile_px;
+            float tile_right = tile_left + (float)subtile_px;
+            float tile_bottom = (float)sy * (float)subtile_px;
+            float tile_top = tile_bottom + (float)subtile_px;
 
             if (right <= tile_left || left >= tile_right) continue;
             if (top <= tile_bottom || bottom >= tile_top) continue;
