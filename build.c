@@ -6,6 +6,8 @@
 
 #define CHIPMUNK_INCLUDE_DIR   "third_party/Chipmunk2D/include"
 
+#define XML_INCLUDE_DIR        "third_party/xml.c/src"
+
 #if defined(_WIN32)
     #define CHIPMUNK_LIB_DIR   "third_party/Chipmunk2D/build"
 #else
@@ -13,7 +15,11 @@
     #define CHIPMUNK_LIB_NAME  "libchipmunk.so.7.0.3"
 #endif
 
+#define XML_LIB_DIR            "third_party/xml.c/build"
+#define XML_LIB_NAME           "libxml.a"
+
 static bool sync_assets(void) {
+    return true;
     if (!nob_mkdir_if_not_exists("build")) return false;
     return nob_copy_directory_recursively("assets", "build/assets");
 }
@@ -29,12 +35,14 @@ static bool sync_assets(void) {
         "-fno-fast-math", "-fno-finite-math-only", \
         "-I", "include", \
         "-I", CHIPMUNK_INCLUDE_DIR, \
+        "-I", XML_INCLUDE_DIR, \
         "src/main.c", \
         "src/modules/*.c", \
         "-o", "build/game.exe", \
         "-L", "lib", \
         "-L", CHIPMUNK_LIB_DIR, \
-        "-lraylib", "-lchipmunk", "-lgdi32", "-lwinmm"
+        "-L", XML_LIB_DIR, \
+        "-lraylib", "-lchipmunk", "-l:libxml.a", "-lgdi32", "-lwinmm"
 
 #endif /* _WIN32 */
 
@@ -55,20 +63,28 @@ int main(int argc, char **argv) {
     const char *chipmunk_lib_name = CHIPMUNK_LIB_NAME;
     const char *chipmunk_lib_file = nob_temp_sprintf("%s/%s", chipmunk_lib_dir, chipmunk_lib_name);
     nob_log(NOB_INFO, "Linking against %s", chipmunk_lib_file);
+    const char *xml_lib_dir = XML_LIB_DIR;
+    const char *xml_lib_name = XML_LIB_NAME;
+    const char *xml_lib_file = nob_temp_sprintf("%s/%s", xml_lib_dir, xml_lib_name);
+    nob_log(NOB_INFO, "Linking against %s", xml_lib_file);
     const char *chipmunk_rpath = nob_temp_sprintf("$ORIGIN/../%s", chipmunk_lib_dir);
 
     char *cmdline = nob_temp_sprintf(
         "gcc -std=c99 -Wall -Wextra -fno-fast-math -fno-finite-math-only "
         "$(pkg-config --cflags raylib) "
-        "-I %s "
+        "-I %s -I %s "
         "src/main.c src/modules/*.c "
         "-o build/game "
         "$(pkg-config --libs raylib) "
         "-L %s -l:%s "
+        "-L %s -l:%s "
         "-Wl,-rpath,'%s' -lm",
         CHIPMUNK_INCLUDE_DIR,
+        XML_INCLUDE_DIR,
         chipmunk_lib_dir,
         chipmunk_lib_name,
+        xml_lib_dir,
+        xml_lib_name,
         chipmunk_rpath
     );
     nob_cmd_append(&cmd, "sh", "-lc", cmdline);
