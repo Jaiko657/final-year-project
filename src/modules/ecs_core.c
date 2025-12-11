@@ -20,6 +20,7 @@ cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
 cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
 cmp_phys_body_t cmp_phys_body[ECS_MAX_ENTITIES];
 cmp_liftable_t  cmp_liftable[ECS_MAX_ENTITIES];
+cmp_door_t      cmp_door[ECS_MAX_ENTITIES];
 
 // ========== O(1) create/delete ==========
 static int free_stack[ECS_MAX_ENTITIES];
@@ -386,6 +387,28 @@ void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float resti
 void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type)
 {
     cmp_add_phys_body(e, type, PHYS_DEFAULT_MASS, PHYS_DEFAULT_RESTITUTION, PHYS_DEFAULT_FRICTION);
+}
+
+void cmp_add_door(ecs_entity_t e, float prox_radius, float prox_off_x, float prox_off_y, int tile_count, const int (*tile_xy)[2])
+{
+    int i = ent_index_checked(e);
+    if (i < 0) return;
+    memset(&cmp_door[i], 0, sizeof(cmp_door[i]));
+    cmp_door[i].prox_radius = prox_radius;
+    cmp_door[i].prox_off_x = prox_off_x;
+    cmp_door[i].prox_off_y = prox_off_y;
+    if (tile_xy && tile_count > 0) {
+        if (tile_count > 4) tile_count = 4;
+        cmp_door[i].tile_count = tile_count;
+        for (int t = 0; t < tile_count; ++t) {
+            cmp_door[i].tiles[t].x = tile_xy[t][0];
+            cmp_door[i].tiles[t].y = tile_xy[t][1];
+        }
+    }
+    cmp_door[i].state = DOOR_CLOSED;
+    cmp_door[i].current_frame = 0;
+    cmp_door[i].anim_time_ms = 0.0f;
+    ecs_mask[i] |= CMP_DOOR;
 }
 
 // =============== Systems (internal) ======

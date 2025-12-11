@@ -46,21 +46,21 @@
    <property name="animationtype" value="door"/>
   </properties>
   <animation>
-   <frame tileid="288" duration="50"/>
-   <frame tileid="290" duration="50"/>
-   <frame tileid="292" duration="50"/>
-   <frame tileid="294" duration="50"/>
-   <frame tileid="384" duration="100"/>
-   <frame tileid="386" duration="100"/>
-   <frame tileid="388" duration="100"/>
-   <frame tileid="390" duration="100"/>
-   <frame tileid="392" duration="100"/>
-   <frame tileid="394" duration="150"/>
-   <frame tileid="396" duration="30"/>
-   <frame tileid="398" duration="30"/>
-   <frame tileid="400" duration="30"/>
-   <frame tileid="402" duration="30"/>
-   <frame tileid="404" duration="50"/>
+   <frame tileid="288" duration="25"/>
+   <frame tileid="290" duration="25"/>
+   <frame tileid="292" duration="25"/>
+   <frame tileid="294" duration="25"/>
+   <frame tileid="384" duration="50"/>
+   <frame tileid="386" duration="50"/>
+   <frame tileid="388" duration="50"/>
+   <frame tileid="390" duration="50"/>
+   <frame tileid="392" duration="50"/>
+   <frame tileid="394" duration="50"/>
+   <frame tileid="396" duration="15"/>
+   <frame tileid="398" duration="15"/>
+   <frame tileid="400" duration="15"/>
+   <frame tileid="402" duration="15"/>
+   <frame tileid="404" duration="35"/>
    <frame tileid="406" duration="500"/>
   </animation>
  </tile>
@@ -69,21 +69,21 @@
    <property name="animationtype" value="door"/>
   </properties>
   <animation>
-   <frame tileid="289" duration="50"/>
-   <frame tileid="291" duration="50"/>
-   <frame tileid="293" duration="50"/>
-   <frame tileid="295" duration="50"/>
-   <frame tileid="385" duration="100"/>
-   <frame tileid="387" duration="100"/>
-   <frame tileid="389" duration="100"/>
-   <frame tileid="391" duration="100"/>
-   <frame tileid="393" duration="100"/>
-   <frame tileid="395" duration="150"/>
-   <frame tileid="397" duration="30"/>
-   <frame tileid="399" duration="30"/>
-   <frame tileid="401" duration="30"/>
-   <frame tileid="403" duration="30"/>
-   <frame tileid="405" duration="50"/>
+   <frame tileid="289" duration="25"/>
+   <frame tileid="291" duration="25"/>
+   <frame tileid="293" duration="25"/>
+   <frame tileid="295" duration="25"/>
+   <frame tileid="385" duration="50"/>
+   <frame tileid="387" duration="50"/>
+   <frame tileid="389" duration="50"/>
+   <frame tileid="391" duration="50"/>
+   <frame tileid="393" duration="50"/>
+   <frame tileid="395" duration="50"/>
+   <frame tileid="397" duration="15"/>
+   <frame tileid="399" duration="15"/>
+   <frame tileid="401" duration="15"/>
+   <frame tileid="403" duration="15"/>
+   <frame tileid="405" duration="35"/>
    <frame tileid="407" duration="500"/>
   </animation>
  </tile>
@@ -232,21 +232,21 @@
    <property name="animationtype" value="door"/>
   </properties>
   <animation>
-   <frame tileid="408" duration="50"/>
-   <frame tileid="409" duration="50"/>
-   <frame tileid="410" duration="50"/>
-   <frame tileid="411" duration="50"/>
-   <frame tileid="504" duration="100"/>
-   <frame tileid="505" duration="100"/>
-   <frame tileid="506" duration="100"/>
-   <frame tileid="507" duration="100"/>
-   <frame tileid="508" duration="100"/>
-   <frame tileid="509" duration="150"/>
-   <frame tileid="510" duration="30"/>
-   <frame tileid="511" duration="30"/>
-   <frame tileid="512" duration="30"/>
-   <frame tileid="513" duration="30"/>
-   <frame tileid="514" duration="50"/>
+   <frame tileid="408" duration="25"/>
+   <frame tileid="409" duration="25"/>
+   <frame tileid="410" duration="25"/>
+   <frame tileid="411" duration="25"/>
+   <frame tileid="504" duration="50"/>
+   <frame tileid="505" duration="50"/>
+   <frame tileid="506" duration="50"/>
+   <frame tileid="507" duration="50"/>
+   <frame tileid="508" duration="50"/>
+   <frame tileid="509" duration="50"/>
+   <frame tileid="510" duration="15"/>
+   <frame tileid="511" duration="15"/>
+   <frame tileid="512" duration="15"/>
+   <frame tileid="513" duration="15"/>
+   <frame tileid="514" duration="35"/>
    <frame tileid="515" duration="500"/>
   </animation>
  </tile>

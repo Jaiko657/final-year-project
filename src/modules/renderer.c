@@ -53,7 +53,7 @@ const char* renderer_collider_debug_mode_label(collider_debug_mode_t mode)
     return g_collider_debug_names[mode];
 }
 
-static void renderer_unload_tiled(void)
+void renderer_unload_tiled_map(void)
 {
     if (!g_tiled_ready) return;
     tiled_renderer_shutdown(&g_tiled_renderer);
@@ -63,7 +63,7 @@ static void renderer_unload_tiled(void)
 
 bool renderer_load_tiled_map(const char* tmx_path)
 {
-    renderer_unload_tiled();
+    renderer_unload_tiled_map();
     if (!tmx_path) return false;
     if (!tiled_load_map(tmx_path, &g_tiled_map)) {
         LOGC(LOGCAT_REND, LOG_LVL_ERROR, "tiled: failed to load '%s'", tmx_path);
@@ -206,6 +206,7 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
 
 static void draw_world(const render_view_t* view) {
     if (g_tiled_ready) {
+        world_sync_tiled_colliders(&g_tiled_map);
         tiled_renderer_draw(&g_tiled_map, &g_tiled_renderer, &view->padded_view);
     } else {
         int tileSize = world_tile_size();
@@ -417,6 +418,12 @@ void renderer_next_frame(void) {
 }
 
 void renderer_shutdown(void) {
-    renderer_unload_tiled();
+    renderer_unload_tiled_map();
     if (IsWindowReady()) CloseWindow();
+}
+
+tiled_map_t* renderer_get_tiled_map(void)
+{
+    if (!g_tiled_ready) return NULL;
+    return &g_tiled_map;
 }

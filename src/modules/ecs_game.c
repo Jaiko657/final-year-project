@@ -7,9 +7,12 @@
 #include "../includes/asset.h"
 #include "../includes/logger.h"
 #include "../includes/world.h"
+#include "../includes/tiled.h"
+#include "../includes/renderer.h"
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 int init_entities(int W, int H)
 {
@@ -137,6 +140,121 @@ int init_entities(int W, int H)
     asset_release_texture(tex_player);
     asset_release_texture(tex_coin);
     asset_release_texture(tex_npc);
+
+    // Doors from TMX objects (simple placement + triggers)
+    tiled_map_t door_map;
+    if (tiled_load_map("start.tmx", &door_map)) {
+        for (size_t i = 0; i < door_map.object_count; ++i) {
+            const tiled_object_t *obj = &door_map.objects[i];
+            if (!obj->animationtype) continue;
+            if (strcmp(obj->animationtype, "proximity-door") != 0 && strcmp(obj->animationtype, "door") != 0) continue;
+
+            float ow = (obj->w > 0.0f) ? obj->w : (float)door_map.tilewidth;
+            float oh = (obj->h > 0.0f) ? obj->h : (float)door_map.tileheight;
+            // Tiled object y is bottom by default for gid objects; place at object center
+            float px = obj->x + ow * 0.5f;
+            float py = obj->y - oh * 0.5f;
+
+            float prox_r = (obj->proximity_radius > 0) ? (float)obj->proximity_radius : 64.0f;
+            float prox_ox = (float)obj->proximity_off_x;
+            float prox_oy = (float)obj->proximity_off_y;
+
+            // Determine which tiles this door covers: prefer explicit door_tiles property, fallback to size
+            int tiles_xy[4][2];
+            int tile_count = 0;
+            if (obj->door_tile_count > 0) {
+                tile_count = obj->door_tile_count > 4 ? 4 : obj->door_tile_count;
+                for (int t = 0; t < tile_count; ++t) {
+                    tiles_xy[t][0] = obj->door_tiles[t][0];
+                    tiles_xy[t][1] = obj->door_tiles[t][1];
+                }
+            } else {
+                float top = obj->y - oh;
+                float left = obj->x;
+                int start_tx = (int)floorf(left / door_map.tilewidth);
+                int end_tx   = (int)ceilf((left + ow) / door_map.tilewidth);
+                int start_ty = (int)floorf(top / door_map.tileheight);
+                int end_ty   = (int)ceilf((top + oh) / door_map.tileheight);
+                for (int ty = start_ty; ty < end_ty; ++ty) {
+                    for (int tx = start_tx; tx < end_tx; ++tx) {
+                        if (tile_count < 4) {
+                            tiles_xy[tile_count][0] = tx;
+                            tiles_xy[tile_count][1] = ty;
+                            tile_count++;
+                        }
+                    }
+                }
+            }
+
+            // Resolve layer and tileset info for the tiles this door controls
+            const uint32_t FLIP_H = 0x80000000;
+            const uint32_t FLIP_V = 0x40000000;
+            const uint32_t FLIP_D = 0x20000000;
+            const uint32_t GID_MASK = 0x1FFFFFFF;
+            int layer_idx[4] = {0};
+            int ts_idx[4] = {0};
+            int base_tile[4] = {0};
+            uint32_t flips[4] = {0};
+
+            for (int t = 0; t < tile_count; ++t) {
+                int tx = tiles_xy[t][0];
+                int ty = tiles_xy[t][1];
+                uint32_t raw_gid = 0;
+                int found_layer = -1;
+                // Prefer the topmost layer that contains a non-empty tile at this location.
+                // Forward iteration always picked the first layer (e.g. background), so doors
+                // never referenced the actual door tiles placed on higher layers.
+                for (size_t li = door_map.layer_count; li-- > 0; ) {
+                    const tiled_layer_t *layer = &door_map.layers[li];
+                    if (tx < 0 || ty < 0 || tx >= layer->width || ty >= layer->height) continue;
+                    uint32_t gid = layer->gids[(size_t)ty * (size_t)layer->width + (size_t)tx];
+                    if (gid == 0) continue;
+                    raw_gid = gid;
+                    found_layer = (int)li;
+                    break;
+                }
+                layer_idx[t] = found_layer;
+                flips[t] = raw_gid & (FLIP_H | FLIP_V | FLIP_D);
+                uint32_t bare_gid = raw_gid & GID_MASK;
+                int chosen_ts = -1;
+                int local_id = 0;
+                for (size_t si = 0; si < door_map.tileset_count; ++si) {
+                    const tiled_tileset_t *ts = &door_map.tilesets[si];
+                    int local = (int)bare_gid - ts->first_gid;
+                    if (local < 0 || local >= ts->tilecount) continue;
+                    chosen_ts = (int)si;
+                    local_id = local;
+                }
+                ts_idx[t] = chosen_ts;
+                base_tile[t] = local_id;
+            }
+
+            ecs_entity_t door = ecs_create();
+            cmp_add_position(door, px, py);
+            cmp_add_size(door, ow * 0.5f, oh * 0.5f); // gives CMP_COL for proximity system
+            cmp_add_trigger(door, prox_r, CMP_PLAYER | CMP_COL);
+            cmp_add_door(door,
+                         prox_r,
+                         prox_ox,
+                         prox_oy,
+                         tile_count,
+                         tile_count > 0 ? tiles_xy : NULL);
+
+            // store extra tile info directly in cmp_door
+            int di = ent_index_checked(door);
+            if (di >= 0) {
+                for (int t = 0; t < tile_count; ++t) {
+                    cmp_door[di].layer_idx[t] = layer_idx[t];
+                    cmp_door[di].tileset_idx[t] = ts_idx[t];
+                    cmp_door[di].base_tile_id[t] = base_tile[t];
+                    cmp_door[di].flip_flags[t] = flips[t];
+                }
+            }
+        }
+        tiled_free_map(&door_map);
+    } else {
+        LOGC(LOGCAT_MAIN, LOG_LVL_WARN, "Doors: failed to load TMX for door objects");
+    }
     return 0;
 }
 
@@ -350,9 +468,188 @@ static void sys_interact_adapt(float dt, const input_t* in)
     sys_interact_from_proximity_impl(in);
 }
 
+static void sys_doors_present(float dt);
+
+static void sys_doors_present_adapt(float dt, const input_t* in)
+{
+    (void)in;
+    sys_doors_present(dt);
+}
+
+static const tiled_tileset_t* ts_for_index(const tiled_map_t* map, int idx) {
+    if (!map || idx < 0 || (size_t)idx >= map->tileset_count) return NULL;
+    return &map->tilesets[idx];
+}
+
+static int door_frame_at(const tiled_tileset_t* ts, int base_tile, float t_ms, bool opening)
+{
+    if (!ts || base_tile < 0 || base_tile >= ts->tilecount) return base_tile;
+    tiled_animation_t *anim = ts->anims ? &ts->anims[base_tile] : NULL;
+    if (!anim || anim->frame_count == 0 || anim->total_duration_ms <= 0) return base_tile;
+
+    int frame = base_tile;
+    if (opening) {
+        int acc = 0;
+        for (size_t i = 0; i < anim->frame_count; ++i) {
+            acc += anim->frames[i].duration_ms;
+            if (t_ms < acc) { frame = anim->frames[i].tile_id; break; }
+        }
+        if (t_ms >= anim->total_duration_ms) {
+            frame = anim->frames[anim->frame_count - 1].tile_id;
+        }
+    } else {
+        int acc = 0;
+        for (size_t i = anim->frame_count; i-- > 0; ) {
+            acc += anim->frames[i].duration_ms;
+            if (t_ms < acc) { frame = anim->frames[i].tile_id; break; }
+        }
+        if (t_ms >= anim->total_duration_ms) {
+            frame = anim->frames[0].tile_id;
+        }
+    }
+    return frame;
+}
+
+static void sys_doors_present(float dt)
+{
+    tiled_map_t* map = renderer_get_tiled_map();
+    if (!map) return;
+
+    const uint32_t FLIP_MASK = 0xE0000000;
+
+    // Build intent from proximity stay/enter
+    bool door_should_open[ECS_MAX_ENTITIES] = {0};
+    for (ecs_prox_iter_t it = ecs_prox_stay_begin(); ; ) {
+        ecs_prox_view_t v;
+        if (!ecs_prox_stay_next(&it, &v)) break;
+        int a = ent_index_checked(v.trigger_owner);
+        if (a >= 0 && (ecs_mask[a] & CMP_DOOR)) {
+            door_should_open[a] = true;
+        }
+    }
+    for (ecs_prox_iter_t it = ecs_prox_enter_begin(); ; ) {
+        ecs_prox_view_t v;
+        if (!ecs_prox_enter_next(&it, &v)) break;
+        int a = ent_index_checked(v.trigger_owner);
+        if (a >= 0 && (ecs_mask[a] & CMP_DOOR)) {
+            door_should_open[a] = true;
+        }
+    }
+
+    float dt_ms = dt * 1000.0f;
+    for (int i = 0; i < ECS_MAX_ENTITIES; ++i) {
+        if (!ecs_alive_idx(i)) continue;
+        if ((ecs_mask[i] & CMP_DOOR) != CMP_DOOR) continue;
+        cmp_door_t *d = &cmp_door[i];
+        bool intent_open = door_should_open[i];
+
+        // Use first tile's animation (if any) to clamp state transitions
+        int primary_ts = (d->tile_count > 0) ? d->tileset_idx[0] : -1;
+        int primary_base = (d->tile_count > 0) ? d->base_tile_id[0] : -1;
+        const tiled_tileset_t *prim_ts = ts_for_index(map, primary_ts);
+        const tiled_animation_t *prim_anim = (prim_ts && prim_ts->anims && primary_base >= 0 && primary_base < prim_ts->tilecount)
+            ? &prim_ts->anims[primary_base] : NULL;
+        int primary_total = prim_anim ? prim_anim->total_duration_ms : 0;
+
+        // Update state machine. If reversing direction mid-animation, mirror remaining time
+        // so the animation plays smoothly instead of restarting.
+        float prev_t = d->anim_time_ms;
+        if (intent_open) {
+            if (d->state == DOOR_CLOSED) {
+                d->anim_time_ms = 0.0f;
+                d->state = DOOR_OPENING;
+            } else if (d->state == DOOR_CLOSING) {
+                if (primary_total > 0) {
+                    float clamped = prev_t;
+                    if (clamped > (float)primary_total) clamped = (float)primary_total;
+                    d->anim_time_ms = (float)primary_total - clamped;
+                } else {
+                    d->anim_time_ms = 0.0f;
+                }
+                d->state = DOOR_OPENING;
+            }
+        } else {
+            if (d->state == DOOR_OPEN) {
+                d->anim_time_ms = 0.0f;
+                d->state = DOOR_CLOSING;
+            } else if (d->state == DOOR_OPENING) {
+                if (primary_total > 0) {
+                    float clamped = prev_t;
+                    if (clamped > (float)primary_total) clamped = (float)primary_total;
+                    d->anim_time_ms = (float)primary_total - clamped;
+                } else {
+                    d->anim_time_ms = 0.0f;
+                }
+                d->state = DOOR_CLOSING;
+            }
+        }
+
+        if (d->state == DOOR_OPENING || d->state == DOOR_CLOSING) {
+            d->anim_time_ms += dt_ms;
+        }
+
+        // Derive playback direction/time from actual state (not intent) so idle closed state shows frame 0.
+        float t_ms = d->anim_time_ms;
+        bool play_forward = true;
+        switch (d->state) {
+            case DOOR_OPENING:
+                play_forward = true;
+                break;
+            case DOOR_OPEN:
+                play_forward = true;
+                if (primary_total > 0) t_ms = (float)primary_total;
+                break;
+            case DOOR_CLOSING:
+                play_forward = false;
+                break;
+            case DOOR_CLOSED:
+            default:
+                play_forward = true;
+                t_ms = 0.0f;
+                break;
+        }
+        if (primary_total > 0 && t_ms > (float)primary_total) {
+            t_ms = (float)primary_total;
+        }
+
+        // Apply frames to tiles
+        for (int t = 0; t < d->tile_count; ++t) {
+            int li = d->layer_idx[t];
+            int tsi = d->tileset_idx[t];
+            int base_tile = d->base_tile_id[t];
+            if (li < 0 || tsi < 0) continue;
+            if ((size_t)li >= map->layer_count || (size_t)tsi >= map->tileset_count) continue;
+            tiled_layer_t *layer = &map->layers[li];
+            const tiled_tileset_t *ts = ts_for_index(map, tsi);
+            if (!ts) continue;
+            int frame_tile = door_frame_at(ts, base_tile, t_ms, play_forward);
+            int tx = d->tiles[t].x;
+            int ty = d->tiles[t].y;
+            if (tx < 0 || ty < 0 || tx >= layer->width || ty >= layer->height) continue;
+            size_t idx = (size_t)ty * (size_t)layer->width + (size_t)tx;
+            uint32_t gid = (uint32_t)(ts->first_gid + frame_tile) | (d->flip_flags[t] & FLIP_MASK);
+            layer->gids[idx] = gid;
+        }
+
+        // Clamp final state when animation completes
+        if (d->state == DOOR_OPENING) {
+            if (primary_total == 0 || d->anim_time_ms >= (float)primary_total) {
+                d->state = DOOR_OPEN;
+                d->anim_time_ms = (float)primary_total;
+            }
+        } else if (d->state == DOOR_CLOSING) {
+            if (primary_total == 0 || d->anim_time_ms >= (float)primary_total) {
+                d->state = DOOR_CLOSED;
+                d->anim_time_ms = 0.0f;
+            }
+        }
+    }
+}
+
 void ecs_register_game_systems(void)
 {
     // maintain original ordering around billboards
     ecs_register_system(PHASE_SIM_POST, 100, sys_pickups_adapt, "pickups");
     ecs_register_system(PHASE_SIM_POST, 300, sys_interact_adapt, "interact");
+    ecs_register_system(PHASE_PRESENT, 50, sys_doors_present_adapt, "doors_present");
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include <stdbool.h>
 #include "engine_types.h"
+#include "tiled.h"
 
 typedef enum {
     WORLD_TILE_VOID = 0,   // out of bounds / unknown
@@ -24,3 +25,6 @@ world_tile_t world_tile_at(int tx, int ty);
 bool world_is_walkable_px(float x, float y);
 bool world_is_walkable_subtile(int sx, int sy);
 v2f  world_get_spawn_px(void);
+
+// Optional runtime sync: update collision masks from a tiled map (e.g., for animated tiles)
+void world_sync_tiled_colliders(const tiled_map_t *map);

@@ -1,6 +1,7 @@
 #include "../includes/world.h"
 #include "../includes/tiled.h"
 #include "../includes/logger.h"
+#include "raylib.h"
 
 #include <math.h>
 #include <ctype.h>
@@ -370,10 +371,19 @@ bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name)
                 uint32_t gid = raw_gid & GID_MASK;
                 if (gid == 0) continue;
 
-                int tile_index = (int)gid - map.tileset.first_gid;
-                if (tile_index < 0 || tile_index >= map.tileset.tilecount) continue;
+                const tiled_tileset_t *ts = NULL;
+                for (size_t ti = 0; ti < map.tileset_count; ++ti) {
+                    const tiled_tileset_t *cand = &map.tilesets[ti];
+                    int local = (int)gid - cand->first_gid;
+                    if (local < 0 || local >= cand->tilecount) continue;
+                    ts = cand;
+                    gid = (uint32_t)local;
+                    break;
+                }
+                if (!ts) continue;
 
-                uint16_t mask = map.tileset.colliders ? map.tileset.colliders[tile_index] : 0;
+                int tile_index = (int)gid;
+                uint16_t mask = ts->colliders ? ts->colliders[tile_index] : 0;
                 if (flip_h) mask = flip_mask_h(mask);
                 if (flip_v) mask = flip_mask_v(mask);
 
@@ -449,4 +459,83 @@ v2f world_get_spawn_px(void) {
         return v2f_make(0.0f, 0.0f);
     }
     return g_world.spawn;
+}
+
+static const tiled_tileset_t* tileset_for_gid_runtime(const tiled_map_t* map, uint32_t gid, size_t* out_idx, int* out_local) {
+    const tiled_tileset_t* match = NULL;
+    size_t mi = 0;
+    int local = 0;
+    for (size_t i = 0; i < map->tileset_count; ++i) {
+        const tiled_tileset_t* ts = &map->tilesets[i];
+        int maybe = (int)gid - ts->first_gid;
+        if (maybe < 0 || maybe >= ts->tilecount) continue;
+        match = ts;
+        mi = i;
+        local = maybe;
+    }
+    if (match && out_idx) *out_idx = mi;
+    if (match && out_local) *out_local = local;
+    return match;
+}
+
+static int animated_tile_index_now(const tiled_tileset_t* ts, int base_index) {
+    if (!ts || !ts->anims || base_index < 0 || base_index >= ts->tilecount) return base_index;
+    tiled_animation_t* anim = &ts->anims[base_index];
+    if (!anim || anim->frame_count == 0 || anim->total_duration_ms <= 0) return base_index;
+
+    double now_ms = GetTime() * 1000.0;
+    int mod = (int)fmod(now_ms, (double)anim->total_duration_ms);
+    int acc = 0;
+    for (size_t i = 0; i < anim->frame_count; ++i) {
+        acc += anim->frames[i].duration_ms;
+        if (mod < acc) {
+            int idx = anim->frames[i].tile_id;
+            if (idx >= 0 && idx < ts->tilecount) return idx;
+            break;
+        }
+    }
+    return base_index;
+}
+
+void world_sync_tiled_colliders(const tiled_map_t* map) {
+    if (!map || map->width != g_world.w || map->height != g_world.h || !g_world.subtile_masks) return;
+
+    const uint32_t FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
+    const uint32_t FLIPPED_VERTICALLY_FLAG   = 0x40000000;
+    const uint32_t FLIPPED_DIAGONALLY_FLAG   = 0x20000000;
+    const uint32_t GID_MASK                  = 0x1FFFFFFF;
+    (void)FLIPPED_DIAGONALLY_FLAG;
+
+    for (size_t li = 0; li < map->layer_count; ++li) {
+        const tiled_layer_t* layer = &map->layers[li];
+        if (!layer->collision) continue;
+
+        size_t idx = 0;
+        for (int y = 0; y < layer->height; ++y) {
+            for (int x = 0; x < layer->width; ++x, ++idx) {
+                if ((size_t)x >= (size_t)map->width || (size_t)y >= (size_t)map->height) continue;
+                uint32_t raw_gid = layer->gids[idx];
+                if (raw_gid == 0) continue;
+
+                bool flip_h = (raw_gid & FLIPPED_HORIZONTALLY_FLAG) != 0;
+                bool flip_v = (raw_gid & FLIPPED_VERTICALLY_FLAG) != 0;
+                uint32_t gid = raw_gid & GID_MASK;
+                if (gid == 0) continue;
+
+                size_t ts_idx = 0;
+                int local = 0;
+                const tiled_tileset_t* ts = tileset_for_gid_runtime(map, gid, &ts_idx, &local);
+                if (!ts) continue;
+
+                int draw_idx = animated_tile_index_now(ts, local);
+                uint16_t mask = (ts->colliders && draw_idx >= 0 && draw_idx < ts->tilecount) ? ts->colliders[draw_idx] : 0;
+                if (flip_h) mask = flip_mask_h(mask);
+                if (flip_v) mask = flip_mask_v(mask);
+
+                size_t write_idx = (size_t)y * (size_t)map->width + (size_t)x;
+                g_world.subtile_masks[write_idx] = mask;
+                g_world.tiles[write_idx] = (mask == subtile_full_mask()) ? WORLD_TILE_SOLID : WORLD_TILE_WALKABLE;
+            }
+        }
+    }
 }

@@ -35,7 +35,7 @@ static bool engine_init_subsystems(const char *title)
     ecs_set_world_size(world_w, world_h);
     camera_init();
 
-    if (!renderer_init(1280, 720, title, 120)) {
+    if (!renderer_init(1280, 720, title, 0)) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "renderer_init failed");
         return false;
     }

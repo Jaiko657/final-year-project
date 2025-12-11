@@ -2,40 +2,81 @@
 #include "../includes/asset_renderer_internal.h"
 
 #include <math.h>
+#include <stdlib.h>
+
+static const tiled_tileset_t *tileset_for_gid(const tiled_map_t *map, uint32_t gid, size_t *out_index) {
+    const tiled_tileset_t *match = NULL;
+    size_t mi = 0;
+    for (size_t i = 0; i < map->tileset_count; ++i) {
+        const tiled_tileset_t *ts = &map->tilesets[i];
+        int local = (int)gid - ts->first_gid;
+        if (local < 0 || local >= ts->tilecount) continue;
+        match = ts;
+        mi = i;
+    }
+    if (match && out_index) *out_index = mi;
+    return match;
+}
+
+static int animated_tile_index(const tiled_tileset_t *ts, int base_index) {
+    if (!ts || !ts->anims || base_index < 0 || base_index >= ts->tilecount) return base_index;
+    tiled_animation_t *anim = &ts->anims[base_index];
+    if (!anim || anim->frame_count == 0 || anim->total_duration_ms <= 0) return base_index;
+
+    double now_ms = GetTime() * 1000.0;
+    int mod = (int)fmod(now_ms, (double)anim->total_duration_ms);
+    int acc = 0;
+    for (size_t i = 0; i < anim->frame_count; ++i) {
+        acc += anim->frames[i].duration_ms;
+        if (mod < acc) {
+            int idx = anim->frames[i].tile_id;
+            if (idx >= 0 && idx < ts->tilecount) return idx;
+            break;
+        }
+    }
+    return base_index;
+}
 
 bool tiled_renderer_init(tiled_renderer_t *r, const tiled_map_t *map) {
-    if (!r || !map) return false;
+    if (!r || !map || map->tileset_count == 0) return false;
     *r = (tiled_renderer_t){0};
-    if (!map->tileset.image_path) {
-        return false;
-    }
-    r->tileset = asset_acquire_texture(map->tileset.image_path);
-    if (!asset_texture_valid(r->tileset)) {
-        r->tileset = (tex_handle_t){0};
-        return false;
+    r->texture_count = map->tileset_count;
+    r->tilesets = (tex_handle_t *)calloc(r->texture_count, sizeof(tex_handle_t));
+    if (!r->tilesets) return false;
+
+    for (size_t i = 0; i < map->tileset_count; ++i) {
+        const tiled_tileset_t *ts = &map->tilesets[i];
+        if (!ts->image_path) {
+            tiled_renderer_shutdown(r);
+            return false;
+        }
+        r->tilesets[i] = asset_acquire_texture(ts->image_path);
+        if (!asset_texture_valid(r->tilesets[i])) {
+            tiled_renderer_shutdown(r);
+            return false;
+        }
     }
     return true;
 }
 
 void tiled_renderer_shutdown(tiled_renderer_t *r) {
     if (!r) return;
-    if (asset_texture_valid(r->tileset)) {
-        asset_release_texture(r->tileset);
+    if (r->tilesets) {
+        for (size_t i = 0; i < r->texture_count; ++i) {
+            if (asset_texture_valid(r->tilesets[i])) {
+                asset_release_texture(r->tilesets[i]);
+            }
+        }
     }
+    free(r->tilesets);
     *r = (tiled_renderer_t){0};
 }
 
 void tiled_renderer_draw(const tiled_map_t *map, const tiled_renderer_t *r, const Rectangle *view) {
-    if (!map || !r) return;
-    if (!asset_texture_valid(r->tileset)) return;
-    Texture2D tex = asset_backend_resolve_texture_value(r->tileset);
-    if (tex.id == 0) return;
+    if (!map || !r || !map->tilesets || !r->tilesets || r->texture_count == 0) return;
 
     int tw = map->tilewidth;
     int th = map->tileheight;
-    int columns = map->tileset.columns > 0 ? map->tileset.columns : 1;
-    int first_gid = map->tileset.first_gid;
-    int total = map->tileset.tilecount;
 
     const uint32_t FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
     const uint32_t FLIPPED_VERTICALLY_FLAG   = 0x40000000;
@@ -71,18 +112,27 @@ void tiled_renderer_draw(const tiled_map_t *map, const tiled_renderer_t *r, cons
                 uint32_t gid = raw_gid & GID_MASK;
                 if (gid == 0) continue;
 
-                int tile_index = (int)gid - first_gid;
-                if (tile_index < 0 || tile_index >= total) continue;
+                size_t ts_idx = 0;
+                const tiled_tileset_t *ts = tileset_for_gid(map, gid, &ts_idx);
+                if (!ts || ts_idx >= r->texture_count) continue;
 
-                int sx = (tile_index % columns) * tw;
-                int sy = (tile_index / columns) * th;
-                Rectangle src = { (float)sx, (float)sy, (float)tw, (float)th };
+                Texture2D tex = asset_backend_resolve_texture_value(r->tilesets[ts_idx]);
+                if (tex.id == 0) continue;
+
+                int local = (int)gid - ts->first_gid;
+                if (local < 0 || local >= ts->tilecount) continue;
+                int draw_index = animated_tile_index(ts, local);
+                int columns = ts->columns > 0 ? ts->columns : 1;
+
+                int sx = (draw_index % columns) * ts->tilewidth;
+                int sy = (draw_index / columns) * ts->tileheight;
+                Rectangle src = { (float)sx, (float)sy, (float)ts->tilewidth, (float)ts->tileheight };
                 if (flip_h) {
-                    src.x += tw;
+                    src.x += ts->tilewidth;
                     src.width = -src.width;
                 }
                 if (flip_v) {
-                    src.y += th;
+                    src.y += ts->tileheight;
                     src.height = -src.height;
                 }
                 Rectangle dst = { (float)(x * tw), (float)(y * th), (float)tw, (float)th };

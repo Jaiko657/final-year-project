@@ -66,6 +66,22 @@ typedef struct {
     float bounce_damping;
 } cmp_liftable_t;
 
+typedef struct {
+    float prox_radius;
+    float prox_off_x;
+    float prox_off_y;
+    int tile_count;
+    struct { int x, y; } tiles[4];
+    int layer_idx[4];
+    int tileset_idx[4];
+    int base_tile_id[4];
+    uint32_t flip_flags[4];
+    int current_frame;
+    float anim_time_ms;
+    bool intent_open;
+    enum { DOOR_CLOSED = 0, DOOR_OPENING, DOOR_OPEN, DOOR_CLOSING } state;
+} cmp_door_t;
+
 // ===== Global ECS storage (defined in ecs_core.c) =====
 extern uint32_t        ecs_mask[ECS_MAX_ENTITIES];
 extern uint32_t        ecs_gen[ECS_MAX_ENTITIES];
@@ -80,6 +96,7 @@ extern cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
 extern cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
 extern cmp_phys_body_t cmp_phys_body[ECS_MAX_ENTITIES];
 extern cmp_liftable_t  cmp_liftable[ECS_MAX_ENTITIES];
+extern cmp_door_t      cmp_door[ECS_MAX_ENTITIES];
 
 // ===== Internal helpers =====
 int  ent_index_checked(ecs_entity_t e);
