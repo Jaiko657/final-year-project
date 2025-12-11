@@ -14,7 +14,6 @@ int  world_tile_size(void);
 int  world_subtile_size(void);
 
 // Lifecycle
-bool world_load(const char* path);
 bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name);
 void world_shutdown(void);
 

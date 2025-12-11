@@ -21,37 +21,9 @@ typedef struct {
     int   seq; //insertion order, tie breaker
 } Item;
 
-static collider_debug_mode_t g_collider_debug_mode = COLLIDER_DEBUG_ECS;
-static const char* g_collider_debug_names[COLLIDER_DEBUG_MODE_COUNT] = {
-    "off",
-    "ecs",
-    "chipmunk",
-    "both"
-};
-
 static tiled_map_t g_tiled_map;
 static tiled_renderer_t g_tiled_renderer;
 static bool g_tiled_ready = false;
-
-void renderer_set_collider_debug_mode(collider_debug_mode_t mode)
-{
-    if (mode < COLLIDER_DEBUG_OFF) mode = COLLIDER_DEBUG_OFF;
-    if (mode >= COLLIDER_DEBUG_MODE_COUNT) mode = COLLIDER_DEBUG_MODE_COUNT - 1;
-    g_collider_debug_mode = mode;
-}
-
-collider_debug_mode_t renderer_get_collider_debug_mode(void)
-{
-    return g_collider_debug_mode;
-}
-
-const char* renderer_collider_debug_mode_label(collider_debug_mode_t mode)
-{
-    if (mode < COLLIDER_DEBUG_OFF || mode >= COLLIDER_DEBUG_MODE_COUNT) {
-        mode = COLLIDER_DEBUG_OFF;
-    }
-    return g_collider_debug_names[mode];
-}
 
 void renderer_unload_tiled_map(void)
 {
@@ -138,7 +110,17 @@ static Rectangle sprite_bounds(const ecs_sprite_view_t* v){
     return (Rectangle){ v->x - v->ox, v->y - v->oy, w, h };
 }
 
-#if DEBUG_COLLISION
+typedef struct {
+    Camera2D cam;
+    Rectangle view;
+    Rectangle padded_view;
+} render_view_t;
+
+#if DEBUG_BUILD && DEBUG_COLLISION
+static bool g_draw_ecs_colliders    = false;
+static bool g_draw_phys_colliders   = false;
+static bool g_draw_static_colliders = false;
+
 static Rectangle collider_bounds_at(float x, float y, float hx, float hy){
     return (Rectangle){ x - hx, y - hy, 2.f * hx, 2.f * hy };
 }
@@ -152,11 +134,79 @@ static void draw_collider_outline(Rectangle bounds, const Rectangle* padded_view
     int rh = (int)ceilf(bounds.height);
     DrawRectangleLines(rx, ry, rw, rh, color);
 }
+
+static void draw_static_colliders(const render_view_t* view, Color color)
+{
+    int tile_px = world_tile_size();
+    int subtile_px = world_subtile_size();
+    if (tile_px <= 0 || subtile_px <= 0) return;
+
+    int tiles_w = 0, tiles_h = 0;
+    world_size_tiles(&tiles_w, &tiles_h);
+    if (tiles_w <= 0 || tiles_h <= 0) return;
+
+    int subtiles_per_tile = tile_px / subtile_px;
+    if (subtiles_per_tile <= 0) return;
+
+    int subtiles_w = tiles_w * subtiles_per_tile;
+    int subtiles_h = tiles_h * subtiles_per_tile;
+    if (subtiles_w <= 0 || subtiles_h <= 0) return;
+
+    float left   = view->padded_view.x;
+    float right  = view->padded_view.x + view->padded_view.width;
+    float top    = view->padded_view.y;
+    float bottom = view->padded_view.y + view->padded_view.height;
+
+    int min_sx = (int)floorf(left / (float)subtile_px);
+    int max_sx = (int)ceilf(right / (float)subtile_px);
+    int min_sy = (int)floorf(top / (float)subtile_px);
+    int max_sy = (int)ceilf(bottom / (float)subtile_px);
+
+    if (min_sx < 0) min_sx = 0;
+    if (min_sy < 0) min_sy = 0;
+    if (max_sx > subtiles_w) max_sx = subtiles_w;
+    if (max_sy > subtiles_h) max_sy = subtiles_h;
+
+    for (int sy = min_sy; sy < max_sy; ++sy) {
+        for (int sx = min_sx; sx < max_sx; ++sx) {
+            if (world_is_walkable_subtile(sx, sy)) continue;
+            int rx = sx * subtile_px;
+            int ry = sy * subtile_px;
+            DrawRectangleLines(rx, ry, subtile_px, subtile_px, color);
+        }
+    }
+}
 #endif
 
-#if DEBUG_TRIGGERS
-static Rectangle trigger_bounds(const ecs_trigger_view_t* c){
-    return (Rectangle){ c->x - c->hx - c->pad, c->y - c->hy - c->pad, 2.f * c->hx + 2.f * c->pad, 2.f * c->hy + 2.f * c->pad };
+#if DEBUG_BUILD
+bool renderer_toggle_ecs_colliders(void)
+{
+#if DEBUG_COLLISION
+    g_draw_ecs_colliders = !g_draw_ecs_colliders;
+    return g_draw_ecs_colliders;
+#else
+    return false;
+#endif
+}
+
+bool renderer_toggle_phys_colliders(void)
+{
+#if DEBUG_COLLISION
+    g_draw_phys_colliders = !g_draw_phys_colliders;
+    return g_draw_phys_colliders;
+#else
+    return false;
+#endif
+}
+
+bool renderer_toggle_static_colliders(void)
+{
+#if DEBUG_COLLISION
+    g_draw_static_colliders = !g_draw_static_colliders;
+    return g_draw_static_colliders;
+#else
+    return false;
+#endif
 }
 #endif
 
@@ -167,12 +217,6 @@ static Rectangle camera_view_rect(const Camera2D* cam){
     float top   = cam->target.y - cam->offset.y / cam->zoom;
     return (Rectangle){ left, top, viewW, viewH };
 }
-
-typedef struct {
-    Camera2D cam;
-    Rectangle view;
-    Rectangle padded_view;
-} render_view_t;
 
 static render_view_t build_camera_view(void){
     camera_view_t logical = camera_get_view();
@@ -192,6 +236,40 @@ static render_view_t build_camera_view(void){
 
     return (render_view_t){ cam, view, padded };
 }
+
+#if DEBUG_BUILD && DEBUG_TRIGGERS
+static bool g_draw_triggers = false;
+
+static Rectangle trigger_bounds(const ecs_trigger_view_t* c){
+    return (Rectangle){ c->x - c->hx - c->pad, c->y - c->hy - c->pad, 2.f * c->hx + 2.f * c->pad, 2.f * c->hy + 2.f * c->pad };
+}
+#endif
+
+#if DEBUG_BUILD && DEBUG_FPS
+static bool g_show_fps = false;
+#endif
+
+#if DEBUG_BUILD
+bool renderer_toggle_triggers(void)
+{
+#if DEBUG_TRIGGERS
+    g_draw_triggers = !g_draw_triggers;
+    return g_draw_triggers;
+#else
+    return false;
+#endif
+}
+
+bool renderer_toggle_fps_overlay(void)
+{
+#if DEBUG_FPS
+    g_show_fps = !g_show_fps;
+    return g_show_fps;
+#else
+    return false;
+#endif
+}
+#endif
 
 bool renderer_init(int width, int height, const char* title, int target_fps) {
     InitWindow(width, height, title ? title : "Game");
@@ -278,43 +356,50 @@ static void draw_world(const render_view_t* view) {
     }
 
 #if DEBUG_COLLISION
-    if (g_collider_debug_mode != COLLIDER_DEBUG_OFF) {
-        bool draw_ecs = (g_collider_debug_mode == COLLIDER_DEBUG_ECS || g_collider_debug_mode == COLLIDER_DEBUG_BOTH);
-        bool draw_phys = (g_collider_debug_mode == COLLIDER_DEBUG_PHYSICS || g_collider_debug_mode == COLLIDER_DEBUG_BOTH);
+    if (g_draw_ecs_colliders || g_draw_phys_colliders || g_draw_static_colliders) {
         Color ecs_color = RED;
         Color phys_color = BLUE;
+        Color static_color = WHITE;
 
-        for (ecs_collider_iter_t it = ecs_colliders_begin(); ; ) {
-            ecs_collider_view_t c;
-            if (!ecs_colliders_next(&it, &c)) break;
+        if (g_draw_static_colliders) {
+            draw_static_colliders(view, static_color);
+        }
 
-            if (draw_ecs) {
-                Rectangle bounds = collider_bounds_at(c.ecs_x, c.ecs_y, c.hx, c.hy);
-                draw_collider_outline(bounds, &view->padded_view, ecs_color);
-            }
+        if (g_draw_ecs_colliders || g_draw_phys_colliders) {
+            for (ecs_collider_iter_t it = ecs_colliders_begin(); ; ) {
+                ecs_collider_view_t c;
+                if (!ecs_colliders_next(&it, &c)) break;
 
-            if (draw_phys && c.has_phys) {
-                Rectangle bounds = collider_bounds_at(c.phys_x, c.phys_y, c.hx, c.hy);
-                draw_collider_outline(bounds, &view->padded_view, phys_color);
+                if (g_draw_ecs_colliders) {
+                    Rectangle bounds = collider_bounds_at(c.ecs_x, c.ecs_y, c.hx, c.hy);
+                    draw_collider_outline(bounds, &view->padded_view, ecs_color);
+                }
+
+                if (g_draw_phys_colliders && c.has_phys) {
+                    Rectangle bounds = collider_bounds_at(c.phys_x, c.phys_y, c.hx, c.hy);
+                    draw_collider_outline(bounds, &view->padded_view, phys_color);
+                }
             }
         }
     }
 #endif
 
 #if DEBUG_TRIGGERS
-    // ===== trigger debug outlines =====
-    for (ecs_trigger_iter_t it = ecs_triggers_begin(); ; ) {
-        ecs_trigger_view_t c;
-        if (!ecs_triggers_next(&it, &c)) break;
+    if (g_draw_triggers) {
+        // ===== trigger debug outlines =====
+        for (ecs_trigger_iter_t it = ecs_triggers_begin(); ; ) {
+            ecs_trigger_view_t c;
+            if (!ecs_triggers_next(&it, &c)) break;
 
-        Rectangle bounds = trigger_bounds(&c);
-        if (!rects_intersect(bounds, view->padded_view)) continue;
+            Rectangle bounds = trigger_bounds(&c);
+            if (!rects_intersect(bounds, view->padded_view)) continue;
 
-        int rx = (int)floorf(bounds.x);
-        int ry = (int)floorf(bounds.y);
-        int rw = (int)ceilf(bounds.width);
-        int rh = (int)ceilf(bounds.height);
-        DrawRectangleLines(rx, ry, rw, rh, GREEN);
+            int rx = (int)floorf(bounds.x);
+            int ry = (int)floorf(bounds.y);
+            int rw = (int)ceilf(bounds.width);
+            int rh = (int)ceilf(bounds.height);
+            DrawRectangleLines(rx, ry, rw, rh, GREEN);
+        }
     }
 #endif
 }
@@ -322,7 +407,7 @@ static void draw_world(const render_view_t* view) {
 static void draw_screen_space_ui(const render_view_t* view) {
 #if DEBUG_FPS
     // ===== FPS overlay =====
-    {
+    if (g_show_fps) {
         int fps = GetFPS();
         float ms = GetFrameTime() * 1000.0f;
         char buf[64];

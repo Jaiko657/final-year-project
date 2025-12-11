@@ -5,8 +5,6 @@
 
 #include <math.h>
 #include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -25,7 +23,6 @@ typedef struct {
     world_tile_t* tiles;
     uint16_t* subtile_masks;
     v2f spawn;         // pixel position at tile center
-    bool has_spawn;
 } world_state_t;
 
 static world_state_t g_world = { .tile_size = WORLD_TILE_SIZE };
@@ -50,16 +47,6 @@ static uint16_t subtile_full_mask(void) {
 
 static v2f tile_center_px(int tx, int ty, int tile_size) {
     return v2f_make((tx + 0.5f) * (float)tile_size, (ty + 0.5f) * (float)tile_size);
-}
-
-static uint16_t subtile_bottom_row_mask(void) {
-    uint16_t mask = 0;
-    const int row = WORLD_SUBTILES_PER_TILE - 1;
-    for (int x = 0; x < WORLD_SUBTILES_PER_TILE; ++x) {
-        int bit = row * WORLD_SUBTILES_PER_TILE + x;
-        mask |= (uint16_t)(1u << bit);
-    }
-    return mask;
 }
 
 static uint16_t flip_mask_h(uint16_t mask) {
@@ -90,231 +77,13 @@ static uint16_t flip_mask_v(uint16_t mask) {
     return out;
 }
 
-static int decode_subtile_char(char c, bool* out_blocked, bool* out_spawn) {
-    if (isspace((unsigned char)c)) return 0; // ignore
-    switch (c) {
-        case '0':
-            *out_blocked = false;
-            *out_spawn = false;
-            return 1;
-        case '1':
-            *out_blocked = true;
-            *out_spawn = false;
-            return 1;
-        case 'S':
-            *out_blocked = false;
-            *out_spawn = true;
-            return 1;
-        default:
-            return -1;
+static bool str_ieq(const char* a, const char* b) {
+    if (!a || !b) return false;
+    while (*a && *b) {
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) return false;
+        ++a; ++b;
     }
-}
-
-static int decode_tile_char(char c, world_tile_t* out_tile, bool* out_spawn, uint16_t* out_mask) {
-    if (isspace((unsigned char)c)) return 0; // ignore
-
-    switch (c) {
-        case '0':
-        case '.':
-            *out_tile = WORLD_TILE_WALKABLE;
-            *out_spawn = false;
-            if (out_mask) *out_mask = 0;
-            return 1;
-        case '1':
-        case '#':
-            *out_tile = WORLD_TILE_SOLID;
-            *out_spawn = false;
-            if (out_mask) *out_mask = subtile_full_mask();
-            return 1;
-        case '2':
-            *out_tile = WORLD_TILE_WALKABLE;
-            *out_spawn = false;
-            if (out_mask) *out_mask = subtile_bottom_row_mask();
-            return 1;
-        case 'S':
-        case 's':
-            *out_tile = WORLD_TILE_WALKABLE;
-            *out_spawn = true;
-            if (out_mask) *out_mask = 0;
-            return 1;
-        default:
-            return -1; // invalid
-    }
-}
-
-bool world_load(const char* path) {
-    world_shutdown(); // drop previous data if any
-
-    FILE* f = fopen(path, "rb");
-    if (!f) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: failed to open '%s'", path);
-        return false;
-    }
-
-    if (fseek(f, 0, SEEK_END) != 0) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: failed to seek '%s'", path);
-        fclose(f);
-        return false;
-    }
-    long len = ftell(f);
-    if (len < 0) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: failed to size '%s'", path);
-        fclose(f);
-        return false;
-    }
-    if (fseek(f, 0, SEEK_SET) != 0) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: failed to rewind '%s'", path);
-        fclose(f);
-        return false;
-    }
-
-    char* buf = (char*)malloc((size_t)len + 1);
-    if (!buf) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: out of memory reading '%s'", path);
-        fclose(f);
-        return false;
-    }
-    size_t read = fread(buf, 1, (size_t)len, f);
-    fclose(f);
-    buf[read] = '\0';
-
-    char* cursor = buf;
-    errno = 0;
-    long raw_w = strtol(cursor, &cursor, 10);
-    long raw_h = strtol(cursor, &cursor, 10);
-    if (errno != 0 || raw_w <= 0 || raw_h <= 0 || raw_w > 32768 || raw_h > 32768) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: invalid width/height in '%s'", path);
-        free(buf);
-        return false;
-    }
-
-    const int subtiles_per_tile = WORLD_SUBTILES_PER_TILE;
-    bool divisible = (raw_w % subtiles_per_tile == 0) && (raw_h % subtiles_per_tile == 0);
-    bool dense_enough = (raw_w > subtiles_per_tile * 8) || (raw_h > subtiles_per_tile * 8); // heuristic to avoid mis-detecting 20x20 legacy maps
-    bool is_subtile_map = divisible && dense_enough;
-    int tiles_w = is_subtile_map ? (int)(raw_w / subtiles_per_tile) : (int)raw_w;
-    int tiles_h = is_subtile_map ? (int)(raw_h / subtiles_per_tile) : (int)raw_h;
-
-    size_t count = (size_t)tiles_w * (size_t)tiles_h;
-    world_tile_t* tiles = (world_tile_t*)malloc(count * sizeof(world_tile_t));
-    if (!tiles) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: out of memory for %dx%d map", tiles_w, tiles_h);
-        free(buf);
-        return false;
-    }
-    uint16_t* masks = (uint16_t*)malloc(count * sizeof(uint16_t));
-    if (!masks) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: out of memory for subtile masks %dx%d", tiles_w, tiles_h);
-        free(buf);
-        free(tiles);
-        return false;
-    }
-
-    for (size_t i = 0; i < count; ++i) {
-        tiles[i] = WORLD_TILE_WALKABLE;
-        masks[i] = 0;
-    }
-
-    size_t idx = 0;
-    bool found_spawn = false;
-
-    if (is_subtile_map) {
-        size_t expected_cells = (size_t)raw_w * (size_t)raw_h;
-        for (; *cursor != '\0' && idx < expected_cells; ++cursor) {
-            bool blocked = false;
-            bool spawn_here = false;
-            int res = decode_subtile_char(*cursor, &blocked, &spawn_here);
-            if (res < 0) {
-                LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: unexpected character '%c' in '%s'", *cursor, path);
-                free(buf);
-                free(tiles);
-                free(masks);
-                return false;
-            } else if (res == 0) {
-                continue; // whitespace
-            }
-
-            int sx = (int)(idx % (size_t)raw_w);
-            int sy = (int)(idx / (size_t)raw_w);
-            int tile_x = sx / subtiles_per_tile;
-            int tile_y = sy / subtiles_per_tile;
-            int local_x = sx % subtiles_per_tile;
-            int local_y = sy % subtiles_per_tile;
-            int bit = local_y * subtiles_per_tile + local_x;
-            size_t tile_index = (size_t)tile_y * (size_t)tiles_w + (size_t)tile_x;
-
-            if (blocked) {
-                masks[tile_index] |= (uint16_t)(1u << bit);
-            }
-            if (spawn_here) {
-                g_world.spawn = tile_center_px(tile_x, tile_y, WORLD_TILE_SIZE);
-                found_spawn = true;
-            }
-
-            idx++;
-        }
-        if (idx != expected_cells) {
-            LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: map '%s' ended early (expected %zu subtiles, got %zu)", path, expected_cells, idx);
-            free(buf);
-            free(tiles);
-            free(masks);
-            return false;
-        }
-
-        uint16_t full_mask = subtile_full_mask();
-        for (size_t i = 0; i < count; ++i) {
-            tiles[i] = (masks[i] == full_mask) ? WORLD_TILE_SOLID : WORLD_TILE_WALKABLE;
-        }
-    } else {
-        for (; *cursor != '\0' && idx < count; ++cursor) {
-            world_tile_t tile = WORLD_TILE_VOID;
-            bool spawn_here = false;
-            uint16_t mask = 0;
-            int res = decode_tile_char(*cursor, &tile, &spawn_here, &mask);
-            if (res < 0) {
-                LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: unexpected character '%c' in '%s'", *cursor, path);
-                free(buf);
-                free(tiles);
-                free(masks);
-                return false;
-            } else if (res == 0) {
-                continue; // whitespace
-            }
-
-            tiles[idx] = tile;
-            masks[idx] = mask;
-            if (spawn_here) {
-                int tx = (int)(idx % (size_t)tiles_w);
-                int ty = (int)(idx / (size_t)tiles_w);
-                g_world.spawn = tile_center_px(tx, ty, WORLD_TILE_SIZE);
-                found_spawn = true;
-            }
-            idx++;
-        }
-
-        if (idx != count) {
-            LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: map '%s' ended early (expected %zu tiles, got %zu)", path, count, idx);
-            free(buf);
-            free(tiles);
-            free(masks);
-            return false;
-        }
-    }
-
-    free(buf);
-
-    g_world.w = tiles_w;
-    g_world.h = tiles_h;
-    g_world.tiles = tiles;
-    g_world.subtile_masks = masks;
-    g_world.tile_size = WORLD_TILE_SIZE;
-    g_world.has_spawn = found_spawn;
-    if (!g_world.has_spawn) {
-        g_world.spawn = tile_center_px(g_world.w / 2, g_world.h / 2, g_world.tile_size);
-    }
-
-    LOGC(LOGCAT_MAIN, LOG_LVL_INFO, "world: loaded %dx%d tiles from '%s'%s", g_world.w, g_world.h, path, found_spawn ? " (spawn set)" : "");
-    return true;
+    return *a == '\0' && *b == '\0';
 }
 
 bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name) {
@@ -399,8 +168,21 @@ bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name)
     g_world.tiles = tiles;
     g_world.subtile_masks = masks;
     g_world.tile_size = WORLD_TILE_SIZE;
-    g_world.has_spawn = false;
-    g_world.spawn = tile_center_px(g_world.w / 4, g_world.h / 4, g_world.tile_size);
+    g_world.spawn = tile_center_px(g_world.w / 2, g_world.h / 2, g_world.tile_size);
+
+    bool spawn_found = false;
+    for (size_t i = 0; i < map.object_count; ++i) {
+        const tiled_object_t* obj = &map.objects[i];
+        if (!obj->name || !str_ieq(obj->name, "spawn")) continue;
+        float ow = obj->w > 0.0f ? obj->w : (float)map.tilewidth;
+        float oh = obj->h > 0.0f ? obj->h : (float)map.tileheight;
+        g_world.spawn = v2f_make(obj->x + ow * 0.5f, obj->y - oh * 0.5f);
+        spawn_found = true;
+        break;
+    }
+    if (!spawn_found) {
+        LOGC(LOGCAT_TILE, LOG_LVL_ERROR, "tiled: missing spawn object in '%s' (using map center)", tmx_path);
+    }
 
     tiled_free_map(&map);
 
@@ -458,7 +240,7 @@ v2f world_get_spawn_px(void) {
     if (!g_world.tiles) {
         return v2f_make(0.0f, 0.0f);
     }
-    return g_world.spawn;
+    return v2f_make(g_world.spawn.x, g_world.spawn.y - 32.0f);
 }
 
 static const tiled_tileset_t* tileset_for_gid_runtime(const tiled_map_t* map, uint32_t gid, size_t* out_idx, int* out_local) {

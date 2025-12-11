@@ -604,6 +604,7 @@ static void free_objects(tiled_map_t *map) {
     if (!map || !map->objects) return;
     for (size_t i = 0; i < map->object_count; ++i) {
         tiled_object_t *o = &map->objects[i];
+        free(o->name);
         free(o->animationtype);
     }
     free(map->objects);
@@ -615,6 +616,7 @@ static void parse_object(struct xml_node *obj_node, tiled_object_t *out) {
     memset(out, 0, sizeof(*out));
     node_attr_int(obj_node, "id", &out->id);
     node_attr_int(obj_node, "gid", &out->gid);
+    out->name = node_attr_strdup(obj_node, "name");
     char *x = node_attr_strdup(obj_node, "x");
     char *y = node_attr_strdup(obj_node, "y");
     char *w = node_attr_strdup(obj_node, "width");

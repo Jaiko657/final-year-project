@@ -34,3 +34,4 @@ void log_msg(log_level_t lvl, const log_cat_t* cat, const char* fmt, ...);
 #define LOGCAT_REND  ((log_cat_t){ "RENDER" })
 #define LOGCAT_ASSET ((log_cat_t){ "ASSET" })
 #define LOGCAT_MAIN  ((log_cat_t){ "MAIN" })
+#define LOGCAT_TILE  ((log_cat_t){ "TILE" })

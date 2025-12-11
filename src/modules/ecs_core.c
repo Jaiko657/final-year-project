@@ -570,35 +570,7 @@ static void sys_physics_integrate_impl(float dt)
         v->y = 0.0f;
     }
 
-    // Diagnostics around cpSpaceStep to catch hangs.
-    struct {
-        int bodies;
-        int shapes;
-    } counts = {0, 0};
-
-    static int dbg_frame = 0;
-    const int dbg_limit = 20;
-    bool dbg = dbg_frame < dbg_limit;
-    if (dbg) {
-        world_physics_counts_t c = world_physics_counts();
-        counts.bodies = c.bodies;
-        counts.shapes = c.shapes;
-        LOGC(LOGCAT_ECS, LOG_LVL_DEBUG,
-            "phys dbg pre-step #%d dt=%.4f bodies=%d shapes=%d",
-            dbg_frame, dt, counts.bodies, counts.shapes);
-    }
-
     world_physics_step(dt);
-
-    if (dbg) {
-        world_physics_counts_t c = world_physics_counts();
-        counts.bodies = c.bodies;
-        counts.shapes = c.shapes;
-        LOGC(LOGCAT_ECS, LOG_LVL_DEBUG,
-            "phys dbg post-step #%d bodies=%d shapes=%d",
-            dbg_frame, counts.bodies, counts.shapes);
-        dbg_frame++;
-    }
 
     // Sync Chipmunk positions back to ECS.
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
@@ -617,26 +589,6 @@ static void sys_physics_integrate_impl(float dt)
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
         if (!ecs_alive_idx(e)) continue;
         resolve_tile_penetration(e);
-    }
-}
-
-void sys_debug_binds(const input_t* in)
-{
-    if(input_pressed(in, BTN_ASSET_DEBUG_PRINT)) {
-        asset_reload_all();
-        asset_log_debug();
-    }
-
-    int new_mode = -1;
-    if (input_pressed(in, BTN_DEBUG_COLLIDER_0)) new_mode = COLLIDER_DEBUG_OFF;
-    else if (input_pressed(in, BTN_DEBUG_COLLIDER_1)) new_mode = COLLIDER_DEBUG_ECS;
-    else if (input_pressed(in, BTN_DEBUG_COLLIDER_2)) new_mode = COLLIDER_DEBUG_PHYSICS;
-    else if (input_pressed(in, BTN_DEBUG_COLLIDER_3)) new_mode = COLLIDER_DEBUG_BOTH;
-
-    if (new_mode >= 0) {
-        renderer_set_collider_debug_mode((collider_debug_mode_t)new_mode);
-        collider_debug_mode_t mode = renderer_get_collider_debug_mode();
-        ui_toast(1.0f, "Collider debug: %s", renderer_collider_debug_mode_label(mode));
     }
 }
 
@@ -676,7 +628,10 @@ ecs_count_result_t ecs_count_entities(const uint32_t* masks, int num_masks)
 static void sys_input_adapt(float dt, const input_t* in) { sys_input(dt, in); }
 static void sys_follow_adapt(float dt, const input_t* in) { (void)in; sys_follow(dt); }
 static void sys_physics_adapt(float dt, const input_t* in) { (void)in; sys_physics_integrate_impl(dt); }
+#if DEBUG_BUILD
+void sys_debug_binds(const input_t* in);
 static void sys_debug_binds_adapt(float dt, const input_t* in) { (void)dt; sys_debug_binds(in); }
+#endif
 
 // TODO: dont know if i like forward declaring like this
 
@@ -709,5 +664,7 @@ static void ecs_register_builtin_systems(void)
 
     ecs_register_system(PHASE_PRESENT,  100, sys_anim_sprite_adapt,"sprite_anim");
 
+#if DEBUG_BUILD
     ecs_register_system(PHASE_DEBUG,    100, sys_debug_binds_adapt, "debug_binds");
+#endif
 }

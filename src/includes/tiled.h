@@ -41,6 +41,7 @@ typedef struct {
 typedef struct {
     int id;
     int gid;
+    char *name;       // optional
     float x, y, w, h; // pixels
     char *animationtype;   // optional
     int   proximity_radius;

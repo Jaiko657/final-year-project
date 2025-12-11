@@ -63,13 +63,16 @@ void input_init_defaults(void){
     bind_add(BTN_MOUSE_L, MOUSE_LEFT_BUTTON);
     bind_add(BTN_MOUSE_R, MOUSE_RIGHT_BUTTON);
 
+#if DEBUG_BUILD
     bind_add(BTN_ASSET_DEBUG_PRINT, KEY_SPACE);
 
-    /* Debug collider modes */
-    bind_add(BTN_DEBUG_COLLIDER_0, KEY_ZERO);
-    bind_add(BTN_DEBUG_COLLIDER_1, KEY_ONE);
-    bind_add(BTN_DEBUG_COLLIDER_2, KEY_TWO);
-    bind_add(BTN_DEBUG_COLLIDER_3, KEY_THREE);
+    /* Debug toggles */
+    bind_add(BTN_DEBUG_COLLIDER_ECS,     KEY_ONE);
+    bind_add(BTN_DEBUG_COLLIDER_PHYSICS, KEY_TWO);
+    bind_add(BTN_DEBUG_COLLIDER_STATIC,  KEY_THREE);
+    bind_add(BTN_DEBUG_TRIGGERS,         KEY_FOUR);
+    bind_add(BTN_DEBUG_FPS,              KEY_GRAVE);
+#endif
 }
 
 /*

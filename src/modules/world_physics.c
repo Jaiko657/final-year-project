@@ -6,22 +6,8 @@
 #include <math.h>
 
 static cpSpace* g_space = NULL;
-enum { BOUND_TOP = 0, BOUND_BOTTOM, BOUND_LEFT, BOUND_RIGHT, BOUND_COUNT };
-static cpShape* g_bounds[BOUND_COUNT] = {NULL};
 static cpShape** g_tile_shapes = NULL;
 static size_t g_tile_shape_count = 0;
-
-static void destroy_world_bounds(void)
-{
-    for (int i = 0; i < BOUND_COUNT; ++i) {
-        if (!g_bounds[i]) continue;
-        if (g_space) {
-            cpSpaceRemoveShape(g_space, g_bounds[i]);
-        }
-        cpShapeFree(g_bounds[i]);
-        g_bounds[i] = NULL;
-    }
-}
 
 static void destroy_world_tiles(void)
 {
@@ -93,34 +79,6 @@ static void create_world_tiles(void)
     }
 }
 
-static void create_world_bounds(void)
-{
-    if (!g_space) return;
-    destroy_world_bounds();
-
-    int world_w = 0, world_h = 0;
-    world_size_px(&world_w, &world_h);
-    if (world_w <= 0 || world_h <= 0) return;
-
-    cpBody* static_body = cpSpaceGetStaticBody(g_space);
-    const cpFloat radius = 1.0f; // minimal thickness to keep bodies in-bounds
-
-    cpShape* shapes[BOUND_COUNT] = {
-        [BOUND_TOP]    = cpSegmentShapeNew(static_body, cpv(0.0f, 0.0f),             cpv((cpFloat)world_w, 0.0f),             radius),
-        [BOUND_BOTTOM] = cpSegmentShapeNew(static_body, cpv(0.0f, (cpFloat)world_h), cpv((cpFloat)world_w, (cpFloat)world_h), radius),
-        [BOUND_LEFT]   = cpSegmentShapeNew(static_body, cpv(0.0f, 0.0f),             cpv(0.0f, (cpFloat)world_h),             radius),
-        [BOUND_RIGHT]  = cpSegmentShapeNew(static_body, cpv((cpFloat)world_w, 0.0f), cpv((cpFloat)world_w, (cpFloat)world_h), radius),
-    };
-
-    for (int i = 0; i < BOUND_COUNT; ++i) {
-        if (!shapes[i]) continue;
-        cpShapeSetFriction(shapes[i], 0.9f);
-        cpShapeSetElasticity(shapes[i], 0.0f);
-        cpSpaceAddShape(g_space, shapes[i]);
-        g_bounds[i] = shapes[i];
-    }
-}
-
 static void count_body_cb(cpBody* body, void* data)
 {
     (void)body;
@@ -151,7 +109,6 @@ void world_physics_init(void)
     cpSpaceSetCollisionBias(g_space, cpfpow(1.0f - 0.2f, 60.0f));   // (default is already fine, but this is a bit more aggressive)
 
 
-    create_world_bounds();
     create_world_tiles();
 }
 
@@ -159,7 +116,6 @@ void world_physics_shutdown(void)
 {
     if (g_space) {
         destroy_world_tiles();
-        destroy_world_bounds();
         cpSpaceFree(g_space);
         g_space = NULL;
     }

@@ -24,41 +24,47 @@ static bool sync_assets(void) {
     return nob_copy_directory_recursively("assets", "build/assets");
 }
 
-#ifdef _WIN32
-    /* Windows (w64devkit: manual lib/include from raylib repo) */
-
-    #define BUILD_CMD_PROG      "gcc"
-
-    // Each argument is a separate token — no shell, no quoting issues
-    #define BUILD_CMD_ARGS \
-        "-std=c99", "-Wall", "-Wextra", \
-        "-fno-fast-math", "-fno-finite-math-only", \
-        "-I", "include", \
-        "-I", CHIPMUNK_INCLUDE_DIR, \
-        "-I", XML_INCLUDE_DIR, \
-        "src/main.c", \
-        "src/modules/*.c", \
-        "-o", "build/game.exe", \
-        "-L", "lib", \
-        "-L", CHIPMUNK_LIB_DIR, \
-        "-L", XML_LIB_DIR, \
-        "-lraylib", "-lchipmunk", "-l:libxml.a", "-lgdi32", "-lwinmm"
-
-#endif /* _WIN32 */
-
 /* ────────────────────────────────────────────── */
 
 int main(int argc, char **argv) {
     NOB_GO_REBUILD_URSELF(argc, argv);
 
+    bool debug_build = false;
+    for (int i = 1; i < argc; ++i) {
+        if (nob_sv_eq(nob_sv_from_cstr(argv[i]), nob_sv_from_cstr("--debug"))) debug_build = true;
+        if (nob_sv_eq(nob_sv_from_cstr(argv[i]), nob_sv_from_cstr("--release"))) debug_build = false;
+    }
+
     if (!nob_mkdir_if_not_exists("build")) return 1;
+    nob_log(NOB_INFO, "Mode: %s", debug_build ? "debug" : "release");
 
     Nob_Cmd cmd = {0};
 
 #ifdef _WIN32
-    // Unified call — no platform branches here
-    nob_cmd_append(&cmd, BUILD_CMD_PROG, BUILD_CMD_ARGS);
+    nob_cmd_append(&cmd, "gcc",
+        "-std=c99", "-Wall", "-Wextra",
+        "-fno-fast-math", "-fno-finite-math-only",
+        debug_build ? "-DDEBUG_BUILD=1" : "-DDEBUG_BUILD=0",
+        debug_build ? "-DDEBUG_COLLISION=1" : "-DDEBUG_COLLISION=0",
+        debug_build ? "-DDEBUG_TRIGGERS=1" : "-DDEBUG_TRIGGERS=0",
+        debug_build ? "-DDEBUG_FPS=1" : "-DDEBUG_FPS=0",
+        debug_build ? "-g" : "-DNDEBUG",
+        "-I", "include",
+        "-I", CHIPMUNK_INCLUDE_DIR,
+        "-I", XML_INCLUDE_DIR,
+        "src/main.c",
+        "src/modules/*.c",
+        "-o", "build/game.exe",
+        "-L", "lib",
+        "-L", CHIPMUNK_LIB_DIR,
+        "-L", XML_LIB_DIR,
+        "-lraylib", "-lchipmunk", "-l:libxml.a", "-lgdi32", "-lwinmm"
+    );
 #else
+    const char *debug_flags = debug_build
+        ? "-DDEBUG_BUILD=1 -DDEBUG_COLLISION=1 -DDEBUG_TRIGGERS=1 -DDEBUG_FPS=1 -g"
+        : "-DDEBUG_BUILD=0 -DDEBUG_COLLISION=0 -DDEBUG_TRIGGERS=0 -DDEBUG_FPS=0 -DNDEBUG";
+
     const char *chipmunk_lib_dir = CHIPMUNK_LIB_DIR;
     const char *chipmunk_lib_name = CHIPMUNK_LIB_NAME;
     const char *chipmunk_lib_file = nob_temp_sprintf("%s/%s", chipmunk_lib_dir, chipmunk_lib_name);
@@ -71,6 +77,7 @@ int main(int argc, char **argv) {
 
     char *cmdline = nob_temp_sprintf(
         "gcc -std=c99 -Wall -Wextra -fno-fast-math -fno-finite-math-only "
+        "%s "
         "$(pkg-config --cflags raylib) "
         "-I %s -I %s "
         "src/main.c src/modules/*.c "
@@ -79,6 +86,7 @@ int main(int argc, char **argv) {
         "-L %s -l:%s "
         "-L %s -l:%s "
         "-Wl,-rpath,'%s' -lm",
+        debug_flags,
         CHIPMUNK_INCLUDE_DIR,
         XML_INCLUDE_DIR,
         chipmunk_lib_dir,

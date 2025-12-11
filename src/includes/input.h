@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
+#include "build_config.h"
 
 /*
   REFERENCES:
@@ -20,11 +21,14 @@ typedef enum {
     BTN_LIFT,
     BTN_MOUSE_L,
     BTN_MOUSE_R,
+#if DEBUG_BUILD
     BTN_ASSET_DEBUG_PRINT,
-    BTN_DEBUG_COLLIDER_0,
-    BTN_DEBUG_COLLIDER_1,
-    BTN_DEBUG_COLLIDER_2,
-    BTN_DEBUG_COLLIDER_3,
+    BTN_DEBUG_COLLIDER_ECS,
+    BTN_DEBUG_COLLIDER_PHYSICS,
+    BTN_DEBUG_COLLIDER_STATIC,
+    BTN_DEBUG_TRIGGERS,
+    BTN_DEBUG_FPS,
+#endif
     BTN_COUNT               // <- Must be last as used to loop over enum until this point
 } button_t;
 
