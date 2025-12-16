@@ -24,8 +24,9 @@ typedef struct {
     int frame_h;
 
     int anim_count;
-    int frames_per_anim[MAX_ANIMS];
-    anim_frame_coord_t frames[MAX_ANIMS][MAX_FRAMES];
+    const int* frames_per_anim;      // anim_count entries
+    const int* anim_offsets;         // anim_count entries, prefix sum into frames
+    const anim_frame_coord_t* frames; // flattened frames table
 
     int   current_anim;
     int   frame_index;
@@ -110,3 +111,7 @@ ecs_entity_t find_player_handle(void);
 
 // Toast (TODO: move to engine component when engine exists)
 void ui_toast(float secs, const char* fmt, ...);
+
+// Anim allocator lifecycle (arena-backed animation data)
+void ecs_anim_reset_allocator(void);
+void ecs_anim_shutdown_allocator(void);

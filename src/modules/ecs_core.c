@@ -177,6 +177,7 @@ void ecs_init(void){
     memset(ecs_gen,  0, sizeof(ecs_gen));
     memset(ecs_next_gen, 0, sizeof(ecs_next_gen));
     free_top = 0;
+    ecs_anim_reset_allocator();
     for (int i = ECS_MAX_ENTITIES - 1; i >= 0; --i) {
         free_stack[free_top++] = i;
     }
@@ -186,7 +187,7 @@ void ecs_init(void){
 }
 
 void ecs_shutdown(void){
-    // no heap to free currently
+    ecs_anim_shutdown_allocator();
 }
 
 bool ecs_get_player_position(float* out_x, float* out_y){

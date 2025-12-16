@@ -1,4 +1,5 @@
 #include "../includes/tiled.h"
+#include "../includes/bump_alloc.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -80,6 +81,21 @@ static bool parse_bool_str(const char *s) {
     return false;
 }
 
+static bump_alloc_t g_tile_anim_arena;
+static const size_t TILE_ANIM_ARENA_BYTES = 512 * 1024;
+
+static bool ensure_tile_anim_arena(void) {
+    if (g_tile_anim_arena.data) return true;
+    return bump_init(&g_tile_anim_arena, TILE_ANIM_ARENA_BYTES);
+}
+
+static void reset_tile_anim_arena(void) {
+    if (!g_tile_anim_arena.data) {
+        if (!bump_init(&g_tile_anim_arena, TILE_ANIM_ARENA_BYTES)) return;
+    }
+    bump_reset(&g_tile_anim_arena);
+}
+
 // Expects "[abcd],[efgh],[ijkl],[mnop]" where each char is 0/1; builds 4x4 bitmask row-major
 static uint16_t parse_collider_mask(const char *s, bool *out_ok) {
     if (out_ok) *out_ok = false;
@@ -108,9 +124,6 @@ static uint16_t parse_collider_mask(const char *s, bool *out_ok) {
 
 static void free_tileset_anims(tiled_tileset_t *ts) {
     if (!ts || !ts->anims) return;
-    for (int i = 0; i < ts->tilecount; ++i) {
-        free(ts->anims[i].frames);
-    }
     free(ts->anims);
     ts->anims = NULL;
 }
@@ -250,6 +263,11 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
         return false;
     }
 
+    if (!ensure_tile_anim_arena()) {
+        xml_document_free(doc, true);
+        return false;
+    }
+
     out_tileset->colliders = (uint16_t *)calloc((size_t)out_tileset->tilecount, sizeof(uint16_t));
     out_tileset->no_merge_collider = (bool *)calloc((size_t)out_tileset->tilecount, sizeof(bool));
     out_tileset->anims = (tiled_animation_t *)calloc((size_t)out_tileset->tilecount, sizeof(tiled_animation_t));
@@ -319,7 +337,7 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
                         if (node_name_is(xml_node_child(node_child, k), "frame")) frame_count++;
                     }
                         if (frame_count > 0) {
-                            tiled_anim_frame_t *frames = (tiled_anim_frame_t *)calloc(frame_count, sizeof(tiled_anim_frame_t));
+                            tiled_anim_frame_t *frames = bump_alloc_type(&g_tile_anim_arena, tiled_anim_frame_t, frame_count);
                             if (!frames) {
                                 free(out_tileset->colliders);
                                 free(out_tileset->no_merge_collider);
@@ -329,6 +347,7 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
                                 xml_document_free(doc, true);
                                 return false;
                             }
+                        memset(frames, 0, frame_count * sizeof(tiled_anim_frame_t));
                         int total_ms = 0;
                         size_t fi = 0;
                         for (size_t k = 0; k < anim_children && fi < frame_count; ++k) {
@@ -411,6 +430,10 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
         return false;
     }
 
+    if (!ensure_tile_anim_arena()) {
+        return false;
+    }
+
     out_tileset->colliders = (uint16_t *)calloc((size_t)out_tileset->tilecount, sizeof(uint16_t));
     out_tileset->no_merge_collider = (bool *)calloc((size_t)out_tileset->tilecount, sizeof(bool));
     out_tileset->anims = (tiled_animation_t *)calloc((size_t)out_tileset->tilecount, sizeof(tiled_animation_t));
@@ -479,7 +502,7 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
                         if (node_name_is(xml_node_child(node_child, k), "frame")) frame_count++;
                     }
                     if (frame_count > 0) {
-                        tiled_anim_frame_t *frames = (tiled_anim_frame_t *)calloc(frame_count, sizeof(tiled_anim_frame_t));
+                        tiled_anim_frame_t *frames = bump_alloc_type(&g_tile_anim_arena, tiled_anim_frame_t, frame_count);
                         if (!frames) {
                             free(out_tileset->colliders);
                             free(out_tileset->no_merge_collider);
@@ -488,6 +511,7 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
                             free(out_tileset->painter_offset);
                             return false;
                         }
+                        memset(frames, 0, frame_count * sizeof(tiled_anim_frame_t));
                         int total_ms = 0;
                         size_t fi = 0;
                         for (size_t k = 0; k < anim_children && fi < frame_count; ++k) {
@@ -787,6 +811,7 @@ static void parse_object(struct xml_node *obj_node, tiled_object_t *out) {
 bool tiled_load_map(const char *tmx_path, tiled_map_t *out_map) {
     if (!out_map) return false;
     *out_map = (tiled_map_t){0};
+    reset_tile_anim_arena();
 
     struct xml_document *doc = load_xml_document(tmx_path);
     if (!doc) {
@@ -974,4 +999,5 @@ void tiled_free_map(tiled_map_t *map) {
     free(map->tilesets);
     free_objects(map);
     *map = (tiled_map_t){0};
+    bump_reset(&g_tile_anim_arena);
 }
