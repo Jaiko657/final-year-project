@@ -32,9 +32,10 @@ static void camera_reset_state(void) {
         .position = default_position(),
         .offset = v2f_make(0.0f, 0.0f),
         .bounds = default_bounds(),
-        .stiffness = 12.0f,
         .zoom = 1.0f,
         .padding = 64.0f,
+        .deadzone_x = 16.0f,
+        .deadzone_y = 16.0f,
     };
     g_camera.current = g_camera.config.position;
     g_camera.initialized = true;
@@ -55,12 +56,10 @@ camera_config_t camera_get_config(void) {
 void camera_set_config(const camera_config_t* cfg) {
     if (!cfg) return;
     g_camera.config = *cfg;
-    if (g_camera.config.zoom <= 0.0f) {
-        g_camera.config.zoom = 1.0f;
-    }
-    if (g_camera.config.padding < 0.0f) {
-        g_camera.config.padding = 0.0f;
-    }
+    if (g_camera.config.zoom <= 0.0f) g_camera.config.zoom = 1.0f;
+    if (g_camera.config.padding < 0.0f) g_camera.config.padding = 0.0f;
+    if (g_camera.config.deadzone_x < 0.0f) g_camera.config.deadzone_x = 0.0f;
+    if (g_camera.config.deadzone_y < 0.0f) g_camera.config.deadzone_y = 0.0f;
     g_camera.current = g_camera.config.position;
     g_camera.initialized = true;
 }
@@ -78,23 +77,22 @@ static v2f camera_target_position(void) {
 }
 
 void camera_tick(float dt) {
+    (void)dt;
     if (!g_camera.initialized) {
         camera_reset_state();
     }
 
-    if (dt < 0.0f) dt = 0.0f;
-
     v2f desired = camera_target_position();
+    float dzx = g_camera.config.deadzone_x;
+    float dzy = g_camera.config.deadzone_y;
 
-    if (g_camera.config.stiffness <= 0.0f) {
-        g_camera.current = desired;
-    } else {
-        float alpha = 1.0f - expf(-g_camera.config.stiffness * dt);
-        if (alpha < 0.0f) alpha = 0.0f;
-        if (alpha > 1.0f) alpha = 1.0f;
-        g_camera.current.x += (desired.x - g_camera.current.x) * alpha;
-        g_camera.current.y += (desired.y - g_camera.current.y) * alpha;
-    }
+    float dx = desired.x - g_camera.current.x;
+    float dy = desired.y - g_camera.current.y;
+
+    if (dx > dzx)       g_camera.current.x = desired.x - dzx;
+    else if (dx < -dzx) g_camera.current.x = desired.x + dzx;
+    if (dy > dzy)       g_camera.current.y = desired.y - dzy;
+    else if (dy < -dzy) g_camera.current.y = desired.y + dzy;
 
     if (g_camera.config.bounds.w > 0.0f) {
         float min_x = g_camera.config.bounds.x;

@@ -9,6 +9,7 @@ typedef struct {
 
 bool world_physics_ready(void);
 void world_physics_init(void);
+void world_physics_rebuild_static(void);
 void world_physics_shutdown(void);
 
 bool world_physics_add_body(cpBody* body);

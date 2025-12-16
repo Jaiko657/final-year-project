@@ -9,6 +9,8 @@
 #include "../includes/camera.h"
 #include "../includes/logger.h"
 #include "../includes/ecs_internal.h"
+#include "../includes/engine.h"
+#include "../includes/world.h"
 #include "raylib.h"
 #include <math.h>
 
@@ -38,6 +40,13 @@ void sys_debug_binds(const input_t* in)
     if (input_pressed(in, BTN_DEBUG_TRIGGERS)) {
         bool on = renderer_toggle_triggers();
         ui_toast(1.0f, "Triggers: %s", on ? "on" : "off");
+    }
+
+    if (input_pressed(in, BTN_DEBUG_RELOAD_TMX)) {
+        bool ok = engine_reload_world();
+        int w = 0, h = 0;
+        world_size_tiles(&w, &h);
+        ui_toast(1.0f, "TMX reload: %s (%dx%d tiles)", ok ? "ok" : "failed", w, h);
     }
 
     static bool s_inspect_mode = false;

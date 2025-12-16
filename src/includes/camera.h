@@ -7,9 +7,10 @@ typedef struct {
     v2f position;
     v2f offset;
     rectf bounds;
-    float stiffness;
     float zoom;
     float padding;
+    float deadzone_x;
+    float deadzone_y;
 } camera_config_t;
 
 typedef struct {

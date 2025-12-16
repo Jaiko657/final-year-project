@@ -72,6 +72,7 @@ void input_init_defaults(void){
     bind_add(BTN_DEBUG_COLLIDER_STATIC,  KEY_THREE);
     bind_add(BTN_DEBUG_TRIGGERS,         KEY_FOUR);
     bind_add(BTN_DEBUG_INSPECT,          KEY_FIVE);
+    bind_add(BTN_DEBUG_RELOAD_TMX,       KEY_R);
     bind_add(BTN_DEBUG_FPS,              KEY_GRAVE);
 #endif
 }

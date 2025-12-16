@@ -27,6 +27,13 @@ typedef struct {
 
 static world_state_t g_world = { .tile_size = WORLD_TILE_SIZE };
 
+static void world_reset_state(world_state_t* ws) {
+    if (!ws) return;
+    free(ws->tiles);
+    free(ws->subtile_masks);
+    *ws = (world_state_t){ .tile_size = WORLD_TILE_SIZE };
+}
+
 int world_tile_size(void) {
     return g_world.tile_size;
 }
@@ -36,9 +43,7 @@ int world_subtile_size(void) {
 }
 
 void world_shutdown(void) {
-    free(g_world.tiles);
-    free(g_world.subtile_masks);
-    g_world = (world_state_t){ .tile_size = WORLD_TILE_SIZE };
+    world_reset_state(&g_world);
 }
 
 static uint16_t subtile_full_mask(void) {
@@ -86,27 +91,19 @@ static bool str_ieq(const char* a, const char* b) {
     return *a == '\0' && *b == '\0';
 }
 
-bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name) {
-    world_shutdown();
-
-    tiled_map_t map;
-    if (!tiled_load_map(tmx_path, &map)) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: failed to load TMX '%s'", tmx_path);
-        return false;
+static bool world_build_from_map(const tiled_map_t* map, const char* collision_layer_name, world_state_t* out_world) {
+    if (!map || !out_world) return false;
+    if (map->tilewidth != WORLD_TILE_SIZE || map->tileheight != WORLD_TILE_SIZE) {
+        LOGC(LOGCAT_MAIN, LOG_LVL_WARN, "world: TMX tile size %dx%d differs from engine tile size %d", map->tilewidth, map->tileheight, WORLD_TILE_SIZE);
     }
 
-    if (map.tilewidth != WORLD_TILE_SIZE || map.tileheight != WORLD_TILE_SIZE) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_WARN, "world: TMX tile size %dx%d differs from engine tile size %d", map.tilewidth, map.tileheight, WORLD_TILE_SIZE);
-    }
-
-    size_t count = (size_t)map.width * (size_t)map.height;
+    size_t count = (size_t)map->width * (size_t)map->height;
     world_tile_t* tiles = (world_tile_t*)malloc(count * sizeof(world_tile_t));
     uint16_t* masks = (uint16_t*)malloc(count * sizeof(uint16_t));
     if (!tiles || !masks) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: out of memory for TMX collision (%d x %d)", map.width, map.height);
+        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: out of memory for TMX collision (%d x %d)", map->width, map->height);
         free(tiles);
         free(masks);
-        tiled_free_map(&map);
         return false;
     }
     for (size_t i = 0; i < count; ++i) {
@@ -120,8 +117,8 @@ bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name)
     const uint32_t GID_MASK                  = 0x1FFFFFFF;
     (void)FLIPPED_DIAGONALLY_FLAG;
 
-    for (size_t li = 0; li < map.layer_count; ++li) {
-        const tiled_layer_t* layer = &map.layers[li];
+    for (size_t li = 0; li < map->layer_count; ++li) {
+        const tiled_layer_t* layer = &map->layers[li];
         bool collision_layer = layer->collision;
         if (!collision_layer && collision_layer_name && layer->name && strcmp(layer->name, collision_layer_name) == 0) {
             collision_layer = true;
@@ -131,7 +128,7 @@ bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name)
         size_t idx = 0;
         for (int y = 0; y < layer->height; ++y) {
             for (int x = 0; x < layer->width; ++x, ++idx) {
-                if ((size_t)x >= (size_t)map.width || (size_t)y >= (size_t)map.height) continue;
+                if ((size_t)x >= (size_t)map->width || (size_t)y >= (size_t)map->height) continue;
                 uint32_t raw_gid = layer->gids[idx];
                 if (raw_gid == 0) continue;
 
@@ -141,8 +138,8 @@ bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name)
                 if (gid == 0) continue;
 
                 const tiled_tileset_t *ts = NULL;
-                for (size_t ti = 0; ti < map.tileset_count; ++ti) {
-                    const tiled_tileset_t *cand = &map.tilesets[ti];
+                for (size_t ti = 0; ti < map->tileset_count; ++ti) {
+                    const tiled_tileset_t *cand = &map->tilesets[ti];
                     int local = (int)gid - cand->first_gid;
                     if (local < 0 || local >= cand->tilecount) continue;
                     ts = cand;
@@ -156,37 +153,59 @@ bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name)
                 if (flip_h) mask = flip_mask_h(mask);
                 if (flip_v) mask = flip_mask_v(mask);
 
-                size_t write_idx = (size_t)y * (size_t)map.width + (size_t)x;
+                size_t write_idx = (size_t)y * (size_t)map->width + (size_t)x;
                 masks[write_idx] = mask;
                 tiles[write_idx] = (mask == subtile_full_mask()) ? WORLD_TILE_SOLID : WORLD_TILE_WALKABLE;
             }
         }
     }
 
-    g_world.w = map.width;
-    g_world.h = map.height;
-    g_world.tiles = tiles;
-    g_world.subtile_masks = masks;
-    g_world.tile_size = WORLD_TILE_SIZE;
-    g_world.spawn = tile_center_px(g_world.w / 2, g_world.h / 2, g_world.tile_size);
+    world_state_t new_world = {
+        .w = map->width,
+        .h = map->height,
+        .tile_size = WORLD_TILE_SIZE,
+        .tiles = tiles,
+        .subtile_masks = masks,
+        .spawn = tile_center_px(map->width / 2, map->height / 2, WORLD_TILE_SIZE),
+    };
 
     bool spawn_found = false;
-    for (size_t i = 0; i < map.object_count; ++i) {
-        const tiled_object_t* obj = &map.objects[i];
+    for (size_t i = 0; i < map->object_count; ++i) {
+        const tiled_object_t* obj = &map->objects[i];
         if (!obj->name || !str_ieq(obj->name, "spawn")) continue;
         if (obj->w > 0.0f || obj->h > 0.0f) {
-            g_world.spawn = v2f_make(obj->x + obj->w * 0.5f, obj->y + obj->h * 0.5f);
+            new_world.spawn = v2f_make(obj->x + obj->w * 0.5f, obj->y + obj->h * 0.5f);
         } else {
-            g_world.spawn = v2f_make(obj->x, obj->y);
+            new_world.spawn = v2f_make(obj->x, obj->y);
         }
         spawn_found = true;
         break;
     }
     if (!spawn_found) {
-        LOGC(LOGCAT_TILE, LOG_LVL_ERROR, "tiled: missing spawn object in '%s' (using map center)", tmx_path);
+        LOGC(LOGCAT_TILE, LOG_LVL_ERROR, "tiled: missing spawn object (using map center)");
     }
 
+    *out_world = new_world;
+    return true;
+}
+
+bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name) {
+    tiled_map_t map;
+    if (!tiled_load_map(tmx_path, &map)) {
+        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: failed to load TMX '%s'", tmx_path ? tmx_path : "(null)");
+        return false;
+    }
+
+    world_state_t new_world = {0};
+    bool ok = world_build_from_map(&map, collision_layer_name, &new_world);
     tiled_free_map(&map);
+    if (!ok) {
+        return false;
+    }
+
+    world_state_t old_world = g_world;
+    g_world = new_world;
+    world_reset_state(&old_world);
 
     LOGC(LOGCAT_MAIN, LOG_LVL_INFO, "world: loaded collision from TMX '%s' (%dx%d)", tmx_path, g_world.w, g_world.h);
     return true;

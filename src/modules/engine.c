@@ -13,6 +13,64 @@
 #include "../includes/world_physics.h"
 
 #include "raylib.h"
+#include <string.h>
+#include <math.h>
+
+static char g_current_tmx_path[256] = "start.tmx";
+
+static void remember_tmx_path(const char* path)
+{
+    if (!path) return;
+    strncpy(g_current_tmx_path, path, sizeof(g_current_tmx_path));
+    g_current_tmx_path[sizeof(g_current_tmx_path) - 1] = '\0';
+}
+
+static void sync_camera_to_world(bool snap_to_spawn)
+{
+    int world_w = 0, world_h = 0;
+    world_size_px(&world_w, &world_h);
+
+    camera_config_t cam_cfg = camera_get_config();
+    cam_cfg.bounds   = rectf_xywh(0.0f, 0.0f, (float)world_w, (float)world_h);
+    cam_cfg.target   = ecs_find_player();
+    if (snap_to_spawn) {
+        cam_cfg.position = world_get_spawn_px();
+    } else {
+        cam_cfg.position.x = fmaxf(0.0f, fminf(cam_cfg.position.x, (float)world_w));
+        cam_cfg.position.y = fmaxf(0.0f, fminf(cam_cfg.position.y, (float)world_h));
+    }
+    camera_set_config(&cam_cfg);
+}
+
+static bool reload_world_from_path(const char* tmx_path, bool snap_camera_to_spawn)
+{
+    if (!tmx_path) tmx_path = g_current_tmx_path;
+
+    char previous_path[sizeof(g_current_tmx_path)];
+    strncpy(previous_path, g_current_tmx_path, sizeof(previous_path));
+    previous_path[sizeof(previous_path) - 1] = '\0';
+
+    if (!world_load_from_tmx(tmx_path, "walls")) {
+        return false;
+    }
+
+    if (!renderer_load_tiled_map(tmx_path)) {
+        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "Failed to load TMX map '%s' for renderer, reverting", tmx_path);
+        if (strcmp(previous_path, tmx_path) != 0) {
+            if (!world_load_from_tmx(previous_path, "walls")) {
+                LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to revert world to previous TMX '%s'", previous_path);
+            }
+        }
+        world_physics_rebuild_static();
+        sync_camera_to_world(true);
+        return false;
+    }
+
+    world_physics_rebuild_static();
+    sync_camera_to_world(snap_camera_to_spawn);
+    remember_tmx_path(tmx_path);
+    return true;
+}
 
 static bool engine_init_subsystems(const char *title)
 {
@@ -25,7 +83,7 @@ static bool engine_init_subsystems(const char *title)
     asset_init();
     ecs_init();
     ecs_register_game_systems();
-    if (!world_load_from_tmx("start.tmx", "walls")) {
+    if (!world_load_from_tmx(g_current_tmx_path, "walls")) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to load world collision");
         return false;
     }
@@ -37,10 +95,11 @@ static bool engine_init_subsystems(const char *title)
         return false;
     }
 
-    if (!renderer_load_tiled_map("start.tmx")) {
+    if (!renderer_load_tiled_map(g_current_tmx_path)) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to load TMX map");
         return false;
     }
+    remember_tmx_path(g_current_tmx_path);
 
     // game entities/assets
     int texture_success = init_entities(32*10, 32*10);
@@ -49,15 +108,11 @@ static bool engine_init_subsystems(const char *title)
         return false;
     }
 
-    int world_w = 0, world_h = 0;
-    world_size_px(&world_w, &world_h);
+    sync_camera_to_world(true);
     camera_config_t cam_cfg = camera_get_config();
-    cam_cfg.target   = ecs_find_player();
-    v2f spawn = world_get_spawn_px();
-    cam_cfg.position = spawn;
-    cam_cfg.bounds   = rectf_xywh(0.0f, 0.0f, (float)world_w, (float)world_h);
-    cam_cfg.zoom     = 3.0f;
-    cam_cfg.stiffness = 25.0f;
+    cam_cfg.zoom       = 3.0f;
+    cam_cfg.deadzone_x = 16.0f;
+    cam_cfg.deadzone_y = 16.0f;
     camera_set_config(&cam_cfg);
 
     return true;
@@ -113,4 +168,14 @@ void engine_shutdown(void)
     renderer_shutdown();
     camera_shutdown();
     world_shutdown();
+}
+
+bool engine_reload_world(void)
+{
+    return reload_world_from_path(g_current_tmx_path, true);
+}
+
+bool engine_reload_world_from_path(const char* tmx_path)
+{
+    return reload_world_from_path(tmx_path, true);
 }

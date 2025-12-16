@@ -112,6 +112,13 @@ void world_physics_init(void)
     create_world_tiles();
 }
 
+void world_physics_rebuild_static(void)
+{
+    if (!g_space) return;
+    destroy_world_tiles();
+    create_world_tiles();
+}
+
 void world_physics_shutdown(void)
 {
     if (g_space) {

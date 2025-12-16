@@ -35,30 +35,36 @@ void renderer_unload_tiled_map(void)
 
 bool renderer_load_tiled_map(const char* tmx_path)
 {
-    renderer_unload_tiled_map();
     if (!tmx_path) return false;
-    if (!tiled_load_map(tmx_path, &g_tiled_map)) {
+
+    tiled_map_t new_map;
+    tiled_renderer_t new_renderer;
+    if (!tiled_load_map(tmx_path, &new_map)) {
         LOGC(LOGCAT_REND, LOG_LVL_ERROR, "tiled: failed to load '%s'", tmx_path);
         return false;
     }
-    if (!tiled_renderer_init(&g_tiled_renderer, &g_tiled_map)) {
+    if (!tiled_renderer_init(&new_renderer, &new_map)) {
         LOGC(LOGCAT_REND, LOG_LVL_ERROR, "tiled: renderer init failed for '%s'", tmx_path);
-        tiled_free_map(&g_tiled_map);
+        tiled_free_map(&new_map);
         return false;
     }
 
     int world_w = 0, world_h = 0;
     world_size_tiles(&world_w, &world_h);
-    if (world_w > 0 && world_h > 0 && (world_w != g_tiled_map.width || world_h != g_tiled_map.height)) {
-        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX size %dx%d differs from collision map %dx%d", g_tiled_map.width, g_tiled_map.height, world_w, world_h);
+    if (world_w > 0 && world_h > 0 && (world_w != new_map.width || world_h != new_map.height)) {
+        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX size %dx%d differs from collision map %dx%d", new_map.width, new_map.height, world_w, world_h);
     }
     int tw = world_tile_size();
-    if (tw > 0 && tw != g_tiled_map.tilewidth) {
-        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX tilewidth %d differs from engine tile size %d", g_tiled_map.tilewidth, tw);
+    if (tw > 0 && tw != new_map.tilewidth) {
+        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX tilewidth %d differs from engine tile size %d", new_map.tilewidth, tw);
     }
 
-    LOGC(LOGCAT_REND, LOG_LVL_INFO, "tiled: loaded '%s' (%dx%d @ %dx%d)", tmx_path, g_tiled_map.width, g_tiled_map.height, g_tiled_map.tilewidth, g_tiled_map.tileheight);
+    renderer_unload_tiled_map();
+    g_tiled_map = new_map;
+    g_tiled_renderer = new_renderer;
     g_tiled_ready = true;
+
+    LOGC(LOGCAT_REND, LOG_LVL_INFO, "tiled: loaded '%s' (%dx%d @ %dx%d)", tmx_path, g_tiled_map.width, g_tiled_map.height, g_tiled_map.tilewidth, g_tiled_map.tileheight);
     return true;
 }
 
