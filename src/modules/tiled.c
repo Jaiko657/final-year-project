@@ -253,10 +253,14 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
     out_tileset->colliders = (uint16_t *)calloc((size_t)out_tileset->tilecount, sizeof(uint16_t));
     out_tileset->no_merge_collider = (bool *)calloc((size_t)out_tileset->tilecount, sizeof(bool));
     out_tileset->anims = (tiled_animation_t *)calloc((size_t)out_tileset->tilecount, sizeof(tiled_animation_t));
-    if (!out_tileset->colliders || !out_tileset->anims || !out_tileset->no_merge_collider) {
+    out_tileset->render_painters = (bool *)calloc((size_t)out_tileset->tilecount, sizeof(bool));
+    out_tileset->painter_offset = (int *)calloc((size_t)out_tileset->tilecount, sizeof(int));
+    if (!out_tileset->colliders || !out_tileset->anims || !out_tileset->no_merge_collider || !out_tileset->render_painters || !out_tileset->painter_offset) {
         free(out_tileset->colliders);
         free(out_tileset->no_merge_collider);
         free(out_tileset->anims);
+        free(out_tileset->render_painters);
+        free(out_tileset->painter_offset);
         xml_document_free(doc, true);
         return false;
     }
@@ -287,6 +291,18 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
                             uint16_t mask = parse_collider_mask(pval, &ok);
                             if (ok) out_tileset->colliders[tile_id] = mask;
                             free(pval);
+                        } else if (strcmp(pname, "renderstyle") == 0) {
+                            char *pval = node_attr_strdup(prop, "value");
+                            if (pval && strcasecmp(pval, "painters") == 0) {
+                                out_tileset->render_painters[tile_id] = true;
+                            }
+                            free(pval);
+                        } else if (strcmp(pname, "painteroffset") == 0) {
+                            char *pval = node_attr_strdup(prop, "value");
+                            if (pval) {
+                                out_tileset->painter_offset[tile_id] = atoi(pval);
+                                free(pval);
+                            }
                         } else if (strcmp(pname, "animationtype") == 0) {
                             char *pval = node_attr_strdup(prop, "value");
                             if (pval && strcasecmp(pval, "door") == 0) {
@@ -308,6 +324,8 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
                                 free(out_tileset->colliders);
                                 free(out_tileset->no_merge_collider);
                                 free_tileset_anims(out_tileset);
+                                free(out_tileset->render_painters);
+                                free(out_tileset->painter_offset);
                                 xml_document_free(doc, true);
                                 return false;
                             }
@@ -335,6 +353,17 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
                                 }
                             }
                         }
+                        if (out_tileset->render_painters && out_tileset->render_painters[tile_id]) {
+                            for (size_t f = 0; f < fi; ++f) {
+                                int fid = frames[f].tile_id;
+                                if (fid >= 0 && fid < out_tileset->tilecount) {
+                                    out_tileset->render_painters[fid] = true;
+                                    if (out_tileset->painter_offset) {
+                                        out_tileset->painter_offset[fid] = out_tileset->painter_offset[tile_id];
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -345,6 +374,8 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
         free(out_tileset->colliders);
         free(out_tileset->no_merge_collider);
         free_tileset_anims(out_tileset);
+        free(out_tileset->render_painters);
+        free(out_tileset->painter_offset);
         xml_document_free(doc, true);
         return false;
     }
@@ -363,6 +394,8 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
         free(out_tileset->colliders);
         free(out_tileset->no_merge_collider);
         free_tileset_anims(out_tileset);
+        free(out_tileset->render_painters);
+        free(out_tileset->painter_offset);
         return false;
     }
     return true;
@@ -381,10 +414,14 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
     out_tileset->colliders = (uint16_t *)calloc((size_t)out_tileset->tilecount, sizeof(uint16_t));
     out_tileset->no_merge_collider = (bool *)calloc((size_t)out_tileset->tilecount, sizeof(bool));
     out_tileset->anims = (tiled_animation_t *)calloc((size_t)out_tileset->tilecount, sizeof(tiled_animation_t));
-    if (!out_tileset->colliders || !out_tileset->anims || !out_tileset->no_merge_collider) {
+    out_tileset->render_painters = (bool *)calloc((size_t)out_tileset->tilecount, sizeof(bool));
+    out_tileset->painter_offset = (int *)calloc((size_t)out_tileset->tilecount, sizeof(int));
+    if (!out_tileset->colliders || !out_tileset->anims || !out_tileset->no_merge_collider || !out_tileset->render_painters || !out_tileset->painter_offset) {
         free(out_tileset->colliders);
         free(out_tileset->no_merge_collider);
         free(out_tileset->anims);
+        free(out_tileset->render_painters);
+        free(out_tileset->painter_offset);
         return false;
     }
 
@@ -414,6 +451,18 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
                             uint16_t mask = parse_collider_mask(pval, &ok);
                             if (ok) out_tileset->colliders[tile_id] = mask;
                             free(pval);
+                        } else if (strcmp(pname, "renderstyle") == 0) {
+                            char *pval = node_attr_strdup(prop, "value");
+                            if (pval && strcasecmp(pval, "painters") == 0) {
+                                out_tileset->render_painters[tile_id] = true;
+                            }
+                            free(pval);
+                        } else if (strcmp(pname, "painteroffset") == 0) {
+                            char *pval = node_attr_strdup(prop, "value");
+                            if (pval) {
+                                out_tileset->painter_offset[tile_id] = atoi(pval);
+                                free(pval);
+                            }
                         } else if (strcmp(pname, "animationtype") == 0) {
                             char *pval = node_attr_strdup(prop, "value");
                             if (pval && strcasecmp(pval, "door") == 0) {
@@ -435,6 +484,8 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
                             free(out_tileset->colliders);
                             free(out_tileset->no_merge_collider);
                             free_tileset_anims(out_tileset);
+                            free(out_tileset->render_painters);
+                            free(out_tileset->painter_offset);
                             return false;
                         }
                         int total_ms = 0;
@@ -461,6 +512,17 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
                                 }
                             }
                         }
+                        if (out_tileset->render_painters && out_tileset->render_painters[tile_id]) {
+                            for (size_t f = 0; f < fi; ++f) {
+                                int fid = frames[f].tile_id;
+                                if (fid >= 0 && fid < out_tileset->tilecount) {
+                                    out_tileset->render_painters[fid] = true;
+                                    if (out_tileset->painter_offset) {
+                                        out_tileset->painter_offset[fid] = out_tileset->painter_offset[tile_id];
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -471,6 +533,8 @@ if (!image) {
     free(out_tileset->colliders);
     free(out_tileset->no_merge_collider);
     free_tileset_anims(out_tileset);
+    free(out_tileset->render_painters);
+    free(out_tileset->painter_offset);
     return false;
 }
 
@@ -483,6 +547,8 @@ if (!img_rel) {
     free(out_tileset->colliders);
     free(out_tileset->no_merge_collider);
     free_tileset_anims(out_tileset);
+    free(out_tileset->render_painters);
+    free(out_tileset->painter_offset);
     return false;
 }
     out_tileset->image_path = join_relative(tmx_path, img_rel);
@@ -506,6 +572,8 @@ if (!out_tileset->image_path) {
     free(out_tileset->colliders);
     free(out_tileset->no_merge_collider);
     free_tileset_anims(out_tileset);
+    free(out_tileset->render_painters);
+    free(out_tileset->painter_offset);
     return false;
 }
     return true;
@@ -898,6 +966,8 @@ void tiled_free_map(tiled_map_t *map) {
             free(ts->colliders);
             free(ts->no_merge_collider);
             free_tileset_anims(ts);
+            free(ts->render_painters);
+            free(ts->painter_offset);
             free(ts->image_path);
         }
     }

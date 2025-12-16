@@ -29,6 +29,8 @@ typedef struct {
     uint16_t *colliders;   // tilecount entries, 4x4 subtile masks
     bool *no_merge_collider; // tilecount entries, true to keep collider unmerged (e.g., doors)
     tiled_animation_t *anims; // tilecount entries, optional
+    bool *render_painters;    // tilecount entries, render in painter queue instead of background
+    int  *painter_offset;     // tilecount entries, feet offset from tile top (pixels)
 } tiled_tileset_t;
 
 typedef struct {
@@ -73,6 +75,15 @@ typedef struct {
     tex_handle_t *tilesets; // matches map->tilesets ordering
 } tiled_renderer_t;
 
+typedef struct {
+    tex_handle_t tex;
+    Rectangle src;
+    Rectangle dst;
+    float painter_offset;
+} tiled_painter_tile_t;
+
+typedef void (*tiled_painter_emit_fn)(const tiled_painter_tile_t *tile, void *ud);
+
 bool tiled_renderer_init(tiled_renderer_t *r, const tiled_map_t *map);
 void tiled_renderer_shutdown(tiled_renderer_t *r);
-void tiled_renderer_draw(const tiled_map_t *map, const tiled_renderer_t *r, const Rectangle *view);
+void tiled_renderer_draw(const tiled_map_t *map, const tiled_renderer_t *r, const Rectangle *view, tiled_painter_emit_fn emit_painter, void *emit_ud);

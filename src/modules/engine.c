@@ -36,8 +36,10 @@ static void sync_camera_to_world(bool snap_to_spawn)
     if (snap_to_spawn) {
         cam_cfg.position = world_get_spawn_px();
     } else {
-        cam_cfg.position.x = fmaxf(0.0f, fminf(cam_cfg.position.x, (float)world_w));
-        cam_cfg.position.y = fmaxf(0.0f, fminf(cam_cfg.position.y, (float)world_h));
+        // Preserve current camera position when hot reloading; clamp to new bounds.
+        v2f current = camera_get_view().center;
+        cam_cfg.position.x = fmaxf(0.0f, fminf(current.x, (float)world_w));
+        cam_cfg.position.y = fmaxf(0.0f, fminf(current.y, (float)world_h));
     }
     camera_set_config(&cam_cfg);
 }
@@ -172,10 +174,12 @@ void engine_shutdown(void)
 
 bool engine_reload_world(void)
 {
-    return reload_world_from_path(g_current_tmx_path, true);
+    // Keep current camera position when hot-reloading the same TMX; bounds will clamp.
+    return reload_world_from_path(g_current_tmx_path, false);
 }
 
 bool engine_reload_world_from_path(const char* tmx_path)
 {
-    return reload_world_from_path(tmx_path, true);
+    // When reloading a specific TMX (e.g. hot reload), avoid snapping to spawn.
+    return reload_world_from_path(tmx_path, false);
 }

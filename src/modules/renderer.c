@@ -10,6 +10,7 @@
 #include "../includes/world.h"
 #include "../includes/world_physics.h"
 #include "../includes/tiled.h"
+#include "../includes/dynarray.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -22,9 +23,17 @@ typedef struct {
     int   seq; //insertion order, tie breaker
 } Item;
 
+typedef DA(Item) ItemArray;
+
+typedef struct {
+    ItemArray* queue;
+    bool* warned_overflow;
+} painter_queue_ctx_t;
+
 static tiled_map_t g_tiled_map;
 static tiled_renderer_t g_tiled_renderer;
 static bool g_tiled_ready = false;
+static ItemArray g_painter_items = {0};
 
 void renderer_unload_tiled_map(void)
 {
@@ -80,6 +89,23 @@ static int cmp_item(const void* a, const void* b) {
     return 0;
 }
 
+static bool painter_queue_push(painter_queue_ctx_t* ctx, Item item, const char* warn_msg)
+{
+    if (!ctx || !ctx->queue) return false;
+    if (ctx->queue->size >= ctx->queue->capacity) {
+        DA_GROW(ctx->queue);
+    }
+    if (ctx->queue->size >= ctx->queue->capacity) {
+        if (ctx->warned_overflow && warn_msg && !*(ctx->warned_overflow)) {
+            LOGC(LOGCAT_REND, LOG_LVL_WARN, "%s", warn_msg);
+            *(ctx->warned_overflow) = true;
+        }
+        return false;
+    }
+    ctx->queue->data[ctx->queue->size++] = item;
+    return true;
+}
+
 static unsigned char u8(float x){
     if (x < 0.f) x = 0.f;
     if (x > 1.f) x = 1.f;
@@ -115,6 +141,10 @@ static Rectangle sprite_bounds(const ecs_sprite_view_t* v){
     float w = fabsf(v->src.w);
     float h = fabsf(v->src.h);
     return (Rectangle){ v->x - v->ox, v->y - v->oy, w, h };
+}
+
+static inline rectf rectf_from_rect(Rectangle r){
+    return (rectf){ r.x, r.y, r.width, r.height };
 }
 
 typedef struct {
@@ -270,6 +300,26 @@ static render_view_t build_camera_view(void){
     return (render_view_t){ cam, view, padded };
 }
 
+static void enqueue_painter_tile(const tiled_painter_tile_t* tile, void* ud)
+{
+    if (!tile || !ud) return;
+    painter_queue_ctx_t* ctx = (painter_queue_ctx_t*)ud;
+    if (!ctx || !ctx->queue) return;
+
+    int idx = (int)ctx->queue->size;
+    ecs_sprite_view_t v = {
+        .tex = tile->tex,
+        .src = rectf_from_rect(tile->src),
+        .x   = tile->dst.x,
+        .y   = tile->dst.y,
+        .ox  = 0.0f,
+        .oy  = 0.0f
+    };
+    float key = tile->dst.y + tile->painter_offset;
+    Item item = { .v = v, .key = key, .seq = idx };
+    painter_queue_push(ctx, item, "painter queue overflow; dropping painter tiles");
+}
+
 #if DEBUG_BUILD && DEBUG_TRIGGERS
 static bool g_draw_triggers = false;
 
@@ -316,9 +366,42 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
 }
 
 static void draw_world(const render_view_t* view) {
+    // ===== painter’s algorithm queue =====
+    int painter_cap = 0;
+    if (g_tiled_ready) {
+        int tw = g_tiled_map.tilewidth;
+        int th = g_tiled_map.tileheight;
+        if (tw > 0 && th > 0) {
+            Rectangle map_rect = {0.0f, 0.0f, (float)(g_tiled_map.width * tw), (float)(g_tiled_map.height * th)};
+            Rectangle vis = intersect_rect(map_rect, view->padded_view);
+            if (vis.width > 0.0f && vis.height > 0.0f) {
+                int startX = (int)floorf(vis.x / (float)tw);
+                int startY = (int)floorf(vis.y / (float)th);
+                int endX   = (int)ceilf((vis.x + vis.width) / (float)tw);
+                int endY   = (int)ceilf((vis.y + vis.height) / (float)th);
+                if (startX < 0) startX = 0;
+                if (startY < 0) startY = 0;
+                if (endX > g_tiled_map.width) endX = g_tiled_map.width;
+                if (endY > g_tiled_map.height) endY = g_tiled_map.height;
+                int visible_tiles = (endX - startX) * (endY - startY);
+                if (visible_tiles < 0) visible_tiles = 0;
+                int layer_count = (int)g_tiled_map.layer_count;
+                if (layer_count < 1) layer_count = 1;
+                painter_cap = visible_tiles * layer_count;
+            }
+        }
+    }
+
+    int max_items = ECS_MAX_ENTITIES + painter_cap;
+    if (max_items < ECS_MAX_ENTITIES) max_items = ECS_MAX_ENTITIES;
+    DA_RESERVE(&g_painter_items, (size_t)max_items);
+    DA_CLEAR(&g_painter_items);
+    bool warned_overflow = false;
+    painter_queue_ctx_t painter_ctx = { &g_painter_items, &warned_overflow };
+
     if (g_tiled_ready) {
         world_sync_tiled_colliders(&g_tiled_map);
-        tiled_renderer_draw(&g_tiled_map, &g_tiled_renderer, &view->padded_view);
+        tiled_renderer_draw(&g_tiled_map, &g_tiled_renderer, &view->padded_view, enqueue_painter_tile, &painter_ctx);
     } else {
         int tileSize = world_tile_size();
         int tilesW = 0, tilesH = 0;
@@ -357,10 +440,6 @@ static void draw_world(const render_view_t* view) {
         }
     }
 
-    // ===== painter’s algorithm queue =====
-    Item items[ECS_MAX_ENTITIES];
-    int count = 0;
-
     for (ecs_sprite_iter_t it = ecs_sprites_begin(); ; ) {
         ecs_sprite_view_t v;
         if (!ecs_sprites_next(&it, &v)) break;
@@ -370,13 +449,13 @@ static void draw_world(const render_view_t* view) {
 
         // depth: screen-space "feet"
         float feetY = v.y - v.oy + fabsf(v.src.h);
-        Item item = { .v = v, .key = feetY, .seq = count };
-        items[count++] = item;
+        Item item = { .v = v, .key = feetY, .seq = (int)g_painter_items.size };
+        painter_queue_push(&painter_ctx, item, "painter queue overflow; dropping sprites");
     }
-    qsort(items, count, sizeof(Item), cmp_item);
+    qsort(g_painter_items.data, g_painter_items.size, sizeof(Item), cmp_item);
 
-    for (int i = 0; i < count; ++i) {
-        ecs_sprite_view_t v = items[i].v;
+    for (size_t i = 0; i < g_painter_items.size; ++i) {
+        ecs_sprite_view_t v = g_painter_items.data[i].v;
 
         Texture2D t = asset_backend_resolve_texture_value(v.tex);
         if (t.id == 0) continue;
@@ -538,6 +617,7 @@ void renderer_next_frame(void) {
 
 void renderer_shutdown(void) {
     renderer_unload_tiled_map();
+    DA_FREE(&g_painter_items);
     if (IsWindowReady()) CloseWindow();
 }
 

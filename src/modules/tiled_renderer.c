@@ -72,7 +72,7 @@ void tiled_renderer_shutdown(tiled_renderer_t *r) {
     *r = (tiled_renderer_t){0};
 }
 
-void tiled_renderer_draw(const tiled_map_t *map, const tiled_renderer_t *r, const Rectangle *view) {
+void tiled_renderer_draw(const tiled_map_t *map, const tiled_renderer_t *r, const Rectangle *view, tiled_painter_emit_fn emit_painter, void *emit_ud) {
     if (!map || !r || !map->tilesets || !r->tilesets || r->texture_count == 0) return;
 
     int tw = map->tilewidth;
@@ -136,6 +136,18 @@ void tiled_renderer_draw(const tiled_map_t *map, const tiled_renderer_t *r, cons
                     src.height = -src.height;
                 }
                 Rectangle dst = { (float)(x * tw), (float)(y * th), (float)tw, (float)th };
+
+                bool painter_tile = (ts->render_painters && draw_index >= 0 && draw_index < ts->tilecount) ? ts->render_painters[draw_index] : false;
+                if (painter_tile && emit_painter) {
+                    tiled_painter_tile_t pt = {
+                        .tex = r->tilesets[ts_idx],
+                        .src = src,
+                        .dst = dst,
+                        .painter_offset = (ts->painter_offset && draw_index >= 0 && draw_index < ts->tilecount) ? (float)ts->painter_offset[draw_index] : 0.0f
+                    };
+                    emit_painter(&pt, emit_ud);
+                    continue;
+                }
                 DrawTexturePro(tex, src, dst, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
             }
         }

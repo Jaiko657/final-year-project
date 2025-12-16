@@ -1,18 +1,15 @@
 #include "../includes/ecs_internal.h"
 #include "../includes/ecs_proximity.h"
+#include "../includes/dynarray.h"
 #include <math.h>
 #include <string.h>
 
 // =============== Proximity View (transient each tick) =============
-#define PROX_MAX ECS_MAX_ENTITIES
+static DA(ecs_prox_view_t) prox_curr = {0};
+static DA(ecs_prox_view_t) prox_prev = {0};
 
-static ecs_prox_view_t prox_curr[PROX_MAX];
-static ecs_prox_view_t prox_prev[PROX_MAX];
-static int             prox_curr_count = 0;
-static int             prox_prev_count = 0;
-
-static bool prox_contains(ecs_prox_view_t* arr, int n, ecs_prox_view_t p){
-    for (int i=0;i<n;++i){
+static bool prox_contains(const ecs_prox_view_t* arr, int n, ecs_prox_view_t p){
+    for (int i = 0; i < n; ++i){
         if (arr[i].trigger_owner.idx==p.trigger_owner.idx && arr[i].trigger_owner.gen==p.trigger_owner.gen &&
             arr[i].matched_entity.idx==p.matched_entity.idx && arr[i].matched_entity.gen==p.matched_entity.gen) return true;
     }
@@ -23,11 +20,12 @@ static bool prox_contains(ecs_prox_view_t* arr, int n, ecs_prox_view_t p){
 ecs_prox_iter_t ecs_prox_stay_begin(void){ return (ecs_prox_iter_t){ .i = -1 }; }
 
 bool ecs_prox_stay_next(ecs_prox_iter_t* it, ecs_prox_view_t* out){
+    int count = (int)prox_curr.size;
     int i = it->i + 1;
-    while (i < prox_curr_count){
-        if (ecs_alive_handle(prox_curr[i].trigger_owner) && ecs_alive_handle(prox_curr[i].matched_entity)){
+    while (i < count){
+        if (ecs_alive_handle(prox_curr.data[i].trigger_owner) && ecs_alive_handle(prox_curr.data[i].matched_entity)){
             it->i = i;
-            *out = prox_curr[i];
+            *out = prox_curr.data[i];
             return true;
         }
         ++i;
@@ -38,11 +36,13 @@ bool ecs_prox_stay_next(ecs_prox_iter_t* it, ecs_prox_view_t* out){
 ecs_prox_iter_t ecs_prox_enter_begin(void){ return (ecs_prox_iter_t){ .i = -1 }; }
 
 bool ecs_prox_enter_next(ecs_prox_iter_t* it, ecs_prox_view_t* out){
-    for (int i = it->i + 1; i < prox_curr_count; ++i){
-        if (!ecs_alive_handle(prox_curr[i].trigger_owner) || !ecs_alive_handle(prox_curr[i].matched_entity)) continue;
-        if (!prox_contains(prox_prev, prox_prev_count, prox_curr[i])){
+    int curr_count = (int)prox_curr.size;
+    int prev_count = (int)prox_prev.size;
+    for (int i = it->i + 1; i < curr_count; ++i){
+        if (!ecs_alive_handle(prox_curr.data[i].trigger_owner) || !ecs_alive_handle(prox_curr.data[i].matched_entity)) continue;
+        if (!prox_contains(prox_prev.data, prev_count, prox_curr.data[i])){
             it->i = i;
-            *out = prox_curr[i];
+            *out = prox_curr.data[i];
             return true;
         }
     }
@@ -52,11 +52,13 @@ bool ecs_prox_enter_next(ecs_prox_iter_t* it, ecs_prox_view_t* out){
 ecs_prox_iter_t ecs_prox_exit_begin(void){ return (ecs_prox_iter_t){ .i = -1 }; }
 
 bool ecs_prox_exit_next(ecs_prox_iter_t* it, ecs_prox_view_t* out){
-    for (int i = it->i + 1; i < prox_prev_count; ++i){
-        if (!ecs_alive_handle(prox_prev[i].trigger_owner) || !ecs_alive_handle(prox_prev[i].matched_entity)) continue;
-        if (!prox_contains(prox_curr, prox_curr_count, prox_prev[i])){
+    int prev_count = (int)prox_prev.size;
+    int curr_count = (int)prox_curr.size;
+    for (int i = it->i + 1; i < prev_count; ++i){
+        if (!ecs_alive_handle(prox_prev.data[i].trigger_owner) || !ecs_alive_handle(prox_prev.data[i].matched_entity)) continue;
+        if (!prox_contains(prox_curr.data, curr_count, prox_prev.data[i])){
             it->i = i;
-            *out = prox_prev[i];
+            *out = prox_prev.data[i];
             return true;
         }
     }
@@ -78,11 +80,12 @@ static bool col_overlap_padded_idx(int a, int b, float pad){
 // ---- systems ----
 static void sys_proximity_build_view_impl(void)
 {
-    if (prox_curr_count > 0) {
-        memcpy(prox_prev, prox_curr, sizeof(ecs_prox_view_t)*prox_curr_count);
+    if (prox_curr.size > 0) {
+        DA_RESERVE(&prox_prev, prox_curr.size);
+        memcpy(prox_prev.data, prox_curr.data, sizeof(ecs_prox_view_t) * prox_curr.size);
     }
-    prox_prev_count = prox_curr_count;
-    prox_curr_count = 0;
+    prox_prev.size = prox_curr.size;
+    DA_CLEAR(&prox_curr);
 
     for (int a=0; a<ECS_MAX_ENTITIES; ++a){
         if(!ecs_alive_idx(a)) continue;
@@ -96,10 +99,8 @@ static void sys_proximity_build_view_impl(void)
             if ((ecs_mask[b] & (CMP_POS|CMP_COL)) != (CMP_POS|CMP_COL)) continue;
 
             if (col_overlap_padded_idx(a, b, tr->pad)){
-                if (prox_curr_count < PROX_MAX){
-                    prox_curr[prox_curr_count++] =
-                        (ecs_prox_view_t){ handle_from_index(a), handle_from_index(b) };
-                }
+                ecs_prox_view_t v = { handle_from_index(a), handle_from_index(b) };
+                DA_APPEND(&prox_curr, v);
             }
         }
     }

@@ -427,7 +427,7 @@ static facing_t dir_from_input(const input_t* in, facing_t fallback)
 static void sys_input(float dt, const input_t* in)
 {
     const float SPEED       = 120.0f;
-    const float CHANGE_TIME = 0.08f;   // 80 ms
+    const float CHANGE_TIME = 0.04f;   // 40 ms
 
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
         if (!ecs_alive_idx(e)) continue;

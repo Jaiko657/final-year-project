@@ -64,6 +64,6 @@
     <property name="proximity_radius" type="int" value="8"/>
    </properties>
   </object>
-  <object id="26" name="spawn" x="72" y="39" width="16" height="16"/>
+  <object id="26" name="spawn" x="72" y="40" width="16" height="16"/>
  </objectgroup>
 </map>

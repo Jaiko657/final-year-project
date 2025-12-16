@@ -44,6 +44,8 @@
  <tile id="360">
   <properties>
    <property name="animationtype" value="door"/>
+   <property name="painteroffset" value="24"/>
+   <property name="renderstyle" value="painters"/>
   </properties>
   <animation>
    <frame tileid="288" duration="25"/>
@@ -67,6 +69,8 @@
  <tile id="361">
   <properties>
    <property name="animationtype" value="door"/>
+   <property name="painteroffset" value="24"/>
+   <property name="renderstyle" value="painters"/>
   </properties>
   <animation>
    <frame tileid="289" duration="25"/>
@@ -230,6 +234,8 @@
  <tile id="480">
   <properties>
    <property name="animationtype" value="door"/>
+   <property name="painteroffset" value="24"/>
+   <property name="renderstyle" value="painters"/>
   </properties>
   <animation>
    <frame tileid="408" duration="25"/>
@@ -297,17 +303,17 @@
  </tile>
  <tile id="513">
   <properties>
-   <property name="collider" value="[1111],[1111],[1111],[0000]"/>
+   <property name="collider" value="[0000],[1111],[1001],[0000]"/>
   </properties>
  </tile>
  <tile id="514">
   <properties>
-   <property name="collider" value="[0000],[0000],[1001],[0000]"/>
+   <property name="collider" value="[0000],[0000],[0000],[0000]"/>
   </properties>
  </tile>
  <tile id="515">
   <properties>
-   <property name="collider" value="[0000],[0000],[1001],[0000]"/>
+   <property name="collider" value="[0000],[0000],[0000],[0000]"/>
   </properties>
  </tile>
 </tileset>
