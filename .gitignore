@@ -2,14 +2,20 @@
 *.old
 *.old/
 *.exe
+*tiled-project
+*tiled-session
 
 # Ignore the nob binary in the root
 /nob
 
 # Ignore everything in the build folder
-/build/
+/build
+tiledparsing_tests/build/
+tiledparsing_tests/nob
 /.vscode/
 #windows raylib stuff
 /lib/
 /include/
 count_lines.sh
+
+

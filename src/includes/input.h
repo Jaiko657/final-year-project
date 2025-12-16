@@ -27,6 +27,7 @@ typedef enum {
     BTN_DEBUG_COLLIDER_PHYSICS,
     BTN_DEBUG_COLLIDER_STATIC,
     BTN_DEBUG_TRIGGERS,
+    BTN_DEBUG_INSPECT,
     BTN_DEBUG_FPS,
 #endif
     BTN_COUNT               // <- Must be last as used to loop over enum until this point

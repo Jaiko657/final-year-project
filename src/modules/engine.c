@@ -30,9 +30,6 @@ static bool engine_init_subsystems(const char *title)
         return false;
     }
     world_physics_init();
-    int world_w = 0, world_h = 0;
-    world_size_px(&world_w, &world_h);
-    ecs_set_world_size(world_w, world_h);
     camera_init();
 
     if (!renderer_init(1280, 720, title, 0)) {
@@ -52,6 +49,8 @@ static bool engine_init_subsystems(const char *title)
         return false;
     }
 
+    int world_w = 0, world_h = 0;
+    world_size_px(&world_w, &world_h);
     camera_config_t cam_cfg = camera_get_config();
     cam_cfg.target   = ecs_find_player();
     v2f spawn = world_get_spawn_px();

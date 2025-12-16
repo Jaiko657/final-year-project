@@ -71,6 +71,7 @@ void input_init_defaults(void){
     bind_add(BTN_DEBUG_COLLIDER_PHYSICS, KEY_TWO);
     bind_add(BTN_DEBUG_COLLIDER_STATIC,  KEY_THREE);
     bind_add(BTN_DEBUG_TRIGGERS,         KEY_FOUR);
+    bind_add(BTN_DEBUG_INSPECT,          KEY_FIVE);
     bind_add(BTN_DEBUG_FPS,              KEY_GRAVE);
 #endif
 }
@@ -87,14 +88,20 @@ void input_bind(button_t btn, int keycode){
   Raylib uses disjoint ranges for keyboard vs mouse.
   We detect which family the code belongs to and query the proper function.
 */
+static bool is_mouse_code(int code){
+    return code >= MOUSE_BUTTON_LEFT && code <= MOUSE_BUTTON_BACK;
+}
+
 static bool phys_is_down(int code){
+    if (is_mouse_code(code)) return IsMouseButtonDown(code);
     if (code >= KEY_NULL && code <= KEY_KB_MENU) return IsKeyDown(code);
-    return IsMouseButtonDown(code);
+    return false;
 }
 
 static bool phys_is_pressed(int code){
+    if (is_mouse_code(code)) return IsMouseButtonPressed(code);
     if (code >= KEY_NULL && code <= KEY_KB_MENU) return IsKeyPressed(code);
-    return IsMouseButtonPressed(code);
+    return false;
 }
 
 /*

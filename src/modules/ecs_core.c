@@ -27,8 +27,6 @@ static int free_stack[ECS_MAX_ENTITIES];
 static int free_top = 0;
 
 // Config
-static int g_worldW = 32*6;
-static int g_worldH = 32*6;
 static const float PHYS_DEFAULT_MASS        = 1.0f;
 static const float PHYS_DEFAULT_RESTITUTION = 0.0f;
 static const float PHYS_DEFAULT_FRICTION    = 0.8f;
@@ -189,16 +187,6 @@ void ecs_init(void){
 
 void ecs_shutdown(void){
     // no heap to free currently
-}
-
-void ecs_set_world_size(int w, int h){
-    g_worldW = w;
-    g_worldH = h;
-}
-
-void ecs_get_world_size(int* out_w, int* out_h){
-    if (out_w) *out_w = g_worldW;
-    if (out_h) *out_h = g_worldH;
 }
 
 bool ecs_get_player_position(float* out_x, float* out_y){

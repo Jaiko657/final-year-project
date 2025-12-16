@@ -174,9 +174,11 @@ bool world_load_from_tmx(const char* tmx_path, const char* collision_layer_name)
     for (size_t i = 0; i < map.object_count; ++i) {
         const tiled_object_t* obj = &map.objects[i];
         if (!obj->name || !str_ieq(obj->name, "spawn")) continue;
-        float ow = obj->w > 0.0f ? obj->w : (float)map.tilewidth;
-        float oh = obj->h > 0.0f ? obj->h : (float)map.tileheight;
-        g_world.spawn = v2f_make(obj->x + ow * 0.5f, obj->y - oh * 0.5f);
+        if (obj->w > 0.0f || obj->h > 0.0f) {
+            g_world.spawn = v2f_make(obj->x + obj->w * 0.5f, obj->y + obj->h * 0.5f);
+        } else {
+            g_world.spawn = v2f_make(obj->x, obj->y);
+        }
         spawn_found = true;
         break;
     }
@@ -240,7 +242,7 @@ v2f world_get_spawn_px(void) {
     if (!g_world.tiles) {
         return v2f_make(0.0f, 0.0f);
     }
-    return v2f_make(g_world.spawn.x, g_world.spawn.y - 32.0f);
+    return v2f_make(g_world.spawn.x, g_world.spawn.y);
 }
 
 static const tiled_tileset_t* tileset_for_gid_runtime(const tiled_map_t* map, uint32_t gid, size_t* out_idx, int* out_local) {

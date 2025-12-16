@@ -189,22 +189,22 @@
  </tile>
  <tile id="404">
   <properties>
-   <property name="collider" value="[1110],[1110],[1110],[0000]"/>
+   <property name="collider" value="[1000],[1000],[1110],[0000]"/>
   </properties>
  </tile>
  <tile id="405">
   <properties>
-   <property name="collider" value="[0011],[0011],[0011],[0000]"/>
+   <property name="collider" value="[0001],[0001],[0011],[0000]"/>
   </properties>
  </tile>
  <tile id="406">
   <properties>
-   <property name="collider" value="[1000],[1000],[1000],[0000]"/>
+   <property name="collider" value="[0000],[0000],[1000],[0000]"/>
   </properties>
  </tile>
  <tile id="407">
   <properties>
-   <property name="collider" value="[0001],[0001],[0001],[0000]"/>
+   <property name="collider" value="[0000],[0000],[0001],[0000]"/>
   </properties>
  </tile>
  <tile id="408">
@@ -302,12 +302,12 @@
  </tile>
  <tile id="514">
   <properties>
-   <property name="collider" value="[1001],[1001],[1001],[0000]"/>
+   <property name="collider" value="[0000],[0000],[1001],[0000]"/>
   </properties>
  </tile>
  <tile id="515">
   <properties>
-   <property name="collider" value="[1001],[1001],[1001],[0000]"/>
+   <property name="collider" value="[0000],[0000],[1001],[0000]"/>
   </properties>
  </tile>
 </tileset>
