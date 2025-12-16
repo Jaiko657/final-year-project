@@ -6,6 +6,8 @@
 
 #define CHIPMUNK_INCLUDE_DIR   "third_party/Chipmunk2D/include"
 
+#define RAYLIB_INCLUDE_DIR     "third_party/raylib/src"
+
 #define XML_INCLUDE_DIR        "third_party/xml.c/src"
 
 #if defined(_WIN32)
@@ -40,6 +42,36 @@ int main(int argc, char **argv) {
 
     Nob_Cmd cmd = {0};
 
+    const char *raylib_include_dir = RAYLIB_INCLUDE_DIR;
+    const char *raylib_lib_file = NULL;
+
+#ifdef _WIN32
+    const char *raylib_candidates[] = {
+        "third_party/raylib/build/raylib/libraylib.a",
+        "third_party/raylib/build/raylib/raylib.lib",
+        "third_party/raylib/build/raylib/Release/raylib.lib",
+        "third_party/raylib/build/raylib/Debug/raylib.lib",
+    };
+#else
+    const char *raylib_candidates[] = {
+        "third_party/raylib/build/raylib/libraylib.a",
+        "third_party/raylib/build/raylib/libraylib.so",
+    };
+#endif
+
+    for (size_t i = 0; i < sizeof(raylib_candidates)/sizeof(raylib_candidates[0]); ++i) {
+        if (nob_file_exists(raylib_candidates[i])) {
+            raylib_lib_file = raylib_candidates[i];
+            break;
+        }
+    }
+
+    if (raylib_lib_file == NULL) {
+        nob_log(NOB_ERROR, "Could not find raylib build output. Run third_party/setup.sh first.");
+        return 1;
+    }
+    nob_log(NOB_INFO, "Linking against %s", raylib_lib_file);
+
 #ifdef _WIN32
     nob_cmd_append(&cmd, "gcc",
         "-std=c99", "-Wall", "-Wextra",
@@ -50,6 +82,7 @@ int main(int argc, char **argv) {
         debug_build ? "-DDEBUG_FPS=1" : "-DDEBUG_FPS=0",
         debug_build ? "-g" : "-DNDEBUG",
         "-I", "include",
+        "-I", raylib_include_dir,
         "-I", CHIPMUNK_INCLUDE_DIR,
         "-I", XML_INCLUDE_DIR,
         "src/main.c",
@@ -58,7 +91,9 @@ int main(int argc, char **argv) {
         "-L", "lib",
         "-L", CHIPMUNK_LIB_DIR,
         "-L", XML_LIB_DIR,
-        "-lraylib", "-lchipmunk", "-l:libxml.a", "-lgdi32", "-lwinmm"
+        raylib_lib_file,
+        "-lchipmunk", "-l:libxml.a",
+        "-lopengl32", "-lgdi32", "-lwinmm"
     );
 #else
     const char *debug_flags = debug_build
@@ -78,17 +113,19 @@ int main(int argc, char **argv) {
     char *cmdline = nob_temp_sprintf(
         "gcc -std=c99 -Wall -Wextra -fno-fast-math -fno-finite-math-only "
         "%s "
-        "$(pkg-config --cflags raylib) "
-        "-I %s -I %s "
+        "-I %s -I %s -I %s "
         "src/main.c src/modules/*.c "
         "-o build/game "
-        "$(pkg-config --libs raylib) "
+        "%s "
         "-L %s -l:%s "
         "-L %s -l:%s "
-        "-Wl,-rpath,'%s' -lm",
+        "-Wl,-rpath,'%s' "
+        "-lGL -lm -lpthread -ldl -lrt -lX11",
         debug_flags,
+        raylib_include_dir,
         CHIPMUNK_INCLUDE_DIR,
         XML_INCLUDE_DIR,
+        raylib_lib_file,
         chipmunk_lib_dir,
         chipmunk_lib_name,
         xml_lib_dir,

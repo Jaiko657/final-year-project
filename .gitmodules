@@ -5,3 +5,6 @@
 [submodule "third_party/xml.c"]
 	path = third_party/xml.c
 	url = https://github.com/ooxi/xml.c.git
+[submodule "third_party/raylib"]
+	path = third_party/raylib
+	url = https://github.com/raysan5/raylib.git
