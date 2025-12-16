@@ -251,9 +251,11 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
     }
 
     out_tileset->colliders = (uint16_t *)calloc((size_t)out_tileset->tilecount, sizeof(uint16_t));
+    out_tileset->no_merge_collider = (bool *)calloc((size_t)out_tileset->tilecount, sizeof(bool));
     out_tileset->anims = (tiled_animation_t *)calloc((size_t)out_tileset->tilecount, sizeof(tiled_animation_t));
-    if (!out_tileset->colliders || !out_tileset->anims) {
+    if (!out_tileset->colliders || !out_tileset->anims || !out_tileset->no_merge_collider) {
         free(out_tileset->colliders);
+        free(out_tileset->no_merge_collider);
         free(out_tileset->anims);
         xml_document_free(doc, true);
         return false;
@@ -285,6 +287,12 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
                             uint16_t mask = parse_collider_mask(pval, &ok);
                             if (ok) out_tileset->colliders[tile_id] = mask;
                             free(pval);
+                        } else if (strcmp(pname, "animationtype") == 0) {
+                            char *pval = node_attr_strdup(prop, "value");
+                            if (pval && strcasecmp(pval, "door") == 0) {
+                                out_tileset->no_merge_collider[tile_id] = true;
+                            }
+                            free(pval);
                         }
                         free(pname);
                     }
@@ -294,14 +302,15 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
                     for (size_t k = 0; k < anim_children; ++k) {
                         if (node_name_is(xml_node_child(node_child, k), "frame")) frame_count++;
                     }
-                    if (frame_count > 0) {
-                        tiled_anim_frame_t *frames = (tiled_anim_frame_t *)calloc(frame_count, sizeof(tiled_anim_frame_t));
-                        if (!frames) {
-                            free(out_tileset->colliders);
-                            free_tileset_anims(out_tileset);
-                            xml_document_free(doc, true);
-                            return false;
-                        }
+                        if (frame_count > 0) {
+                            tiled_anim_frame_t *frames = (tiled_anim_frame_t *)calloc(frame_count, sizeof(tiled_anim_frame_t));
+                            if (!frames) {
+                                free(out_tileset->colliders);
+                                free(out_tileset->no_merge_collider);
+                                free_tileset_anims(out_tileset);
+                                xml_document_free(doc, true);
+                                return false;
+                            }
                         int total_ms = 0;
                         size_t fi = 0;
                         for (size_t k = 0; k < anim_children && fi < frame_count; ++k) {
@@ -316,6 +325,16 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
                         out_tileset->anims[tile_id].frames = frames;
                         out_tileset->anims[tile_id].frame_count = fi;
                         out_tileset->anims[tile_id].total_duration_ms = total_ms;
+
+                        // Propagate door/no-merge flag to all frame tiles so runtime detection works on animated frames.
+                        if (out_tileset->no_merge_collider && out_tileset->no_merge_collider[tile_id]) {
+                            for (size_t f = 0; f < fi; ++f) {
+                                int fid = frames[f].tile_id;
+                                if (fid >= 0 && fid < out_tileset->tilecount) {
+                                    out_tileset->no_merge_collider[fid] = true;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -324,6 +343,7 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
     if (!image) {
         fprintf(stderr, "No <image> in TSX\n");
         free(out_tileset->colliders);
+        free(out_tileset->no_merge_collider);
         free_tileset_anims(out_tileset);
         xml_document_free(doc, true);
         return false;
@@ -341,6 +361,7 @@ static bool parse_tileset(const char *tsx_path, tiled_tileset_t *out_tileset) {
     if (!out_tileset->image_path) {
         fprintf(stderr, "Tileset missing image source\n");
         free(out_tileset->colliders);
+        free(out_tileset->no_merge_collider);
         free_tileset_anims(out_tileset);
         return false;
     }
@@ -358,9 +379,11 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
     }
 
     out_tileset->colliders = (uint16_t *)calloc((size_t)out_tileset->tilecount, sizeof(uint16_t));
+    out_tileset->no_merge_collider = (bool *)calloc((size_t)out_tileset->tilecount, sizeof(bool));
     out_tileset->anims = (tiled_animation_t *)calloc((size_t)out_tileset->tilecount, sizeof(tiled_animation_t));
-    if (!out_tileset->colliders || !out_tileset->anims) {
+    if (!out_tileset->colliders || !out_tileset->anims || !out_tileset->no_merge_collider) {
         free(out_tileset->colliders);
+        free(out_tileset->no_merge_collider);
         free(out_tileset->anims);
         return false;
     }
@@ -391,6 +414,12 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
                             uint16_t mask = parse_collider_mask(pval, &ok);
                             if (ok) out_tileset->colliders[tile_id] = mask;
                             free(pval);
+                        } else if (strcmp(pname, "animationtype") == 0) {
+                            char *pval = node_attr_strdup(prop, "value");
+                            if (pval && strcasecmp(pval, "door") == 0) {
+                                out_tileset->no_merge_collider[tile_id] = true;
+                            }
+                            free(pval);
                         }
                         free(pname);
                     }
@@ -404,6 +433,7 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
                         tiled_anim_frame_t *frames = (tiled_anim_frame_t *)calloc(frame_count, sizeof(tiled_anim_frame_t));
                         if (!frames) {
                             free(out_tileset->colliders);
+                            free(out_tileset->no_merge_collider);
                             free_tileset_anims(out_tileset);
                             return false;
                         }
@@ -421,28 +451,40 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
                         out_tileset->anims[tile_id].frames = frames;
                         out_tileset->anims[tile_id].frame_count = fi;
                         out_tileset->anims[tile_id].total_duration_ms = total_ms;
+
+                        // Propagate door/no-merge flag to all frame tiles so runtime detection works on animated frames.
+                        if (out_tileset->no_merge_collider && out_tileset->no_merge_collider[tile_id]) {
+                            for (size_t f = 0; f < fi; ++f) {
+                                int fid = frames[f].tile_id;
+                                if (fid >= 0 && fid < out_tileset->tilecount) {
+                                    out_tileset->no_merge_collider[fid] = true;
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
-    if (!image) {
-        fprintf(stderr, "Inline tileset has no <image>\n");
-        free(out_tileset->colliders);
-        free_tileset_anims(out_tileset);
-        return false;
-    }
+if (!image) {
+    fprintf(stderr, "Inline tileset has no <image>\n");
+    free(out_tileset->colliders);
+    free(out_tileset->no_merge_collider);
+    free_tileset_anims(out_tileset);
+    return false;
+}
 
     char *img_rel = node_attr_strdup(image, "source");
     if (!img_rel) {
         img_rel = scan_attr_in_file(tmx_path, "<image", "source");
     }
-    if (!img_rel) {
-        fprintf(stderr, "Inline tileset image missing source\n");
-        free(out_tileset->colliders);
-        free_tileset_anims(out_tileset);
-        return false;
-    }
+if (!img_rel) {
+    fprintf(stderr, "Inline tileset image missing source\n");
+    free(out_tileset->colliders);
+    free(out_tileset->no_merge_collider);
+    free_tileset_anims(out_tileset);
+    return false;
+}
     out_tileset->image_path = join_relative(tmx_path, img_rel);
     free(img_rel);
 
@@ -459,12 +501,13 @@ static bool parse_tileset_inline(struct xml_node *tileset_node, const char *tmx_
     node_attr_int(image, "width", &out_tileset->image_width);
     node_attr_int(image, "height", &out_tileset->image_height);
 
-    if (!out_tileset->image_path) {
-        fprintf(stderr, "Failed to resolve inline tileset image path\n");
-        free(out_tileset->colliders);
-        free_tileset_anims(out_tileset);
-        return false;
-    }
+if (!out_tileset->image_path) {
+    fprintf(stderr, "Failed to resolve inline tileset image path\n");
+    free(out_tileset->colliders);
+    free(out_tileset->no_merge_collider);
+    free_tileset_anims(out_tileset);
+    return false;
+}
     return true;
 }
 
@@ -853,6 +896,7 @@ void tiled_free_map(tiled_map_t *map) {
         for (size_t i = 0; i < map->tileset_count; ++i) {
             tiled_tileset_t *ts = &map->tilesets[i];
             free(ts->colliders);
+            free(ts->no_merge_collider);
             free_tileset_anims(ts);
             free(ts->image_path);
         }

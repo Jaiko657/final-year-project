@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stdint.h>
 #include "engine_types.h"
 #include "tiled.h"
 
@@ -21,6 +22,8 @@ void world_shutdown(void);
 void world_size_tiles(int* out_w, int* out_h);
 void world_size_px(int* out_w, int* out_h);
 world_tile_t world_tile_at(int tx, int ty);
+uint16_t world_subtile_mask_at(int tx, int ty);
+bool world_tile_is_dynamic(int tx, int ty);
 bool world_is_walkable_px(float x, float y);
 bool world_is_walkable_subtile(int sx, int sy);
 v2f  world_get_spawn_px(void);

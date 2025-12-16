@@ -27,6 +27,7 @@ typedef struct {
     int image_height;
     char *image_path;      // heap-allocated
     uint16_t *colliders;   // tilecount entries, 4x4 subtile masks
+    bool *no_merge_collider; // tilecount entries, true to keep collider unmerged (e.g., doors)
     tiled_animation_t *anims; // tilecount entries, optional
 } tiled_tileset_t;
 

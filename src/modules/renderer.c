@@ -8,6 +8,7 @@
 #include "../includes/toast.h"
 #include "../includes/camera.h"
 #include "../includes/world.h"
+#include "../includes/world_physics.h"
 #include "../includes/tiled.h"
 
 #include <math.h>
@@ -123,6 +124,28 @@ typedef struct {
 } render_view_t;
 
 #if DEBUG_BUILD && DEBUG_COLLISION
+static void draw_collider_outline(Rectangle bounds, const Rectangle* padded_view, Color color);
+
+typedef struct {
+    const render_view_t* view;
+    Color color;
+} static_shape_draw_ctx_t;
+
+static void draw_bb_cb(const cpBB* bb, void* ud)
+{
+    if (!bb || !ud) return;
+    static_shape_draw_ctx_t* c = (static_shape_draw_ctx_t*)ud;
+    Rectangle r = {
+        (float)bb->l,
+        (float)bb->b,
+        (float)(bb->r - bb->l),
+        (float)(bb->t - bb->b)
+    };
+    draw_collider_outline(r, &c->view->padded_view, c->color);
+}
+#endif
+
+#if DEBUG_BUILD && DEBUG_COLLISION
 static bool g_draw_ecs_colliders    = false;
 static bool g_draw_phys_colliders   = false;
 static bool g_draw_static_colliders = false;
@@ -143,42 +166,46 @@ static void draw_collider_outline(Rectangle bounds, const Rectangle* padded_view
 
 static void draw_static_colliders(const render_view_t* view, Color color)
 {
-    int tile_px = world_tile_size();
-    int subtile_px = world_subtile_size();
-    if (tile_px <= 0 || subtile_px <= 0) return;
+    if (!world_physics_ready()) return;
+    static_shape_draw_ctx_t ctx = { view, color };
+    world_physics_for_each_static_shape(draw_bb_cb, &ctx);
+}
 
+static void draw_dynamic_colliders(const render_view_t* view, Color color)
+{
     int tiles_w = 0, tiles_h = 0;
     world_size_tiles(&tiles_w, &tiles_h);
-    if (tiles_w <= 0 || tiles_h <= 0) return;
+    int tile_px = world_tile_size();
+    int subtile_px = world_subtile_size();
+    if (tiles_w <= 0 || tiles_h <= 0 || tile_px <= 0 || subtile_px <= 0) return;
 
     int subtiles_per_tile = tile_px / subtile_px;
     if (subtiles_per_tile <= 0) return;
 
-    int subtiles_w = tiles_w * subtiles_per_tile;
-    int subtiles_h = tiles_h * subtiles_per_tile;
-    if (subtiles_w <= 0 || subtiles_h <= 0) return;
+    for (int ty = 0; ty < tiles_h; ++ty) {
+        for (int tx = 0; tx < tiles_w; ++tx) {
+            if (!world_tile_is_dynamic(tx, ty)) continue;
 
-    float left   = view->padded_view.x;
-    float right  = view->padded_view.x + view->padded_view.width;
-    float top    = view->padded_view.y;
-    float bottom = view->padded_view.y + view->padded_view.height;
+            Rectangle tile_rect = { (float)(tx * tile_px), (float)(ty * tile_px), (float)tile_px, (float)tile_px };
+            if (!rects_intersect(tile_rect, view->padded_view)) continue;
 
-    int min_sx = (int)floorf(left / (float)subtile_px);
-    int max_sx = (int)ceilf(right / (float)subtile_px);
-    int min_sy = (int)floorf(top / (float)subtile_px);
-    int max_sy = (int)ceilf(bottom / (float)subtile_px);
+            uint16_t mask = world_subtile_mask_at(tx, ty);
+            if (mask == 0) continue;
 
-    if (min_sx < 0) min_sx = 0;
-    if (min_sy < 0) min_sy = 0;
-    if (max_sx > subtiles_w) max_sx = subtiles_w;
-    if (max_sy > subtiles_h) max_sy = subtiles_h;
+            for (int sy = 0; sy < subtiles_per_tile; ++sy) {
+                for (int sx = 0; sx < subtiles_per_tile; ++sx) {
+                    int bit = sy * subtiles_per_tile + sx;
+                    if ((mask & (uint16_t)(1u << bit)) == 0) continue;
 
-    for (int sy = min_sy; sy < max_sy; ++sy) {
-        for (int sx = min_sx; sx < max_sx; ++sx) {
-            if (world_is_walkable_subtile(sx, sy)) continue;
-            int rx = sx * subtile_px;
-            int ry = sy * subtile_px;
-            DrawRectangleLines(rx, ry, subtile_px, subtile_px, color);
+                    Rectangle r = {
+                        tile_rect.x + (float)(sx * subtile_px),
+                        tile_rect.y + (float)(sy * subtile_px),
+                        (float)subtile_px,
+                        (float)subtile_px
+                    };
+                    draw_collider_outline(r, &view->padded_view, color);
+                }
+            }
         }
     }
 }
@@ -369,6 +396,7 @@ static void draw_world(const render_view_t* view) {
 
         if (g_draw_static_colliders) {
             draw_static_colliders(view, static_color);
+            draw_dynamic_colliders(view, static_color);
         }
 
         if (g_draw_ecs_colliders || g_draw_phys_colliders) {

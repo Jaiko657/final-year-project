@@ -22,6 +22,7 @@ typedef struct {
     int tile_size;     // pixels per tile
     world_tile_t* tiles;
     uint16_t* subtile_masks;
+    bool* dynamic_tiles; // per-tile flag marking colliders that should not be merged (e.g., doors)
     v2f spawn;         // pixel position at tile center
 } world_state_t;
 
@@ -31,6 +32,7 @@ static void world_reset_state(world_state_t* ws) {
     if (!ws) return;
     free(ws->tiles);
     free(ws->subtile_masks);
+    free(ws->dynamic_tiles);
     *ws = (world_state_t){ .tile_size = WORLD_TILE_SIZE };
 }
 
@@ -100,15 +102,18 @@ static bool world_build_from_map(const tiled_map_t* map, const char* collision_l
     size_t count = (size_t)map->width * (size_t)map->height;
     world_tile_t* tiles = (world_tile_t*)malloc(count * sizeof(world_tile_t));
     uint16_t* masks = (uint16_t*)malloc(count * sizeof(uint16_t));
-    if (!tiles || !masks) {
+    bool* dynamic = (bool*)malloc(count * sizeof(bool));
+    if (!tiles || !masks || !dynamic) {
         LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "world: out of memory for TMX collision (%d x %d)", map->width, map->height);
         free(tiles);
         free(masks);
+        free(dynamic);
         return false;
     }
     for (size_t i = 0; i < count; ++i) {
         tiles[i] = WORLD_TILE_WALKABLE;
         masks[i] = 0;
+        dynamic[i] = false;
     }
 
     const uint32_t FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
@@ -156,6 +161,12 @@ static bool world_build_from_map(const tiled_map_t* map, const char* collision_l
                 size_t write_idx = (size_t)y * (size_t)map->width + (size_t)x;
                 masks[write_idx] = mask;
                 tiles[write_idx] = (mask == subtile_full_mask()) ? WORLD_TILE_SOLID : WORLD_TILE_WALKABLE;
+                if (dynamic) {
+                    bool dynamic_flag = (ts->no_merge_collider && tile_index >= 0 && tile_index < ts->tilecount)
+                        ? ts->no_merge_collider[tile_index]
+                        : false;
+                    dynamic[write_idx] = dynamic_flag;
+                }
             }
         }
     }
@@ -166,6 +177,7 @@ static bool world_build_from_map(const tiled_map_t* map, const char* collision_l
         .tile_size = WORLD_TILE_SIZE,
         .tiles = tiles,
         .subtile_masks = masks,
+        .dynamic_tiles = dynamic,
         .spawn = tile_center_px(map->width / 2, map->height / 2, WORLD_TILE_SIZE),
     };
 
@@ -227,6 +239,20 @@ world_tile_t world_tile_at(int tx, int ty) {
         return WORLD_TILE_VOID;
     }
     return g_world.tiles[ty * g_world.w + tx];
+}
+
+uint16_t world_subtile_mask_at(int tx, int ty) {
+    if (tx < 0 || ty < 0 || tx >= g_world.w || ty >= g_world.h || !g_world.subtile_masks) {
+        return 0;
+    }
+    return g_world.subtile_masks[(size_t)ty * (size_t)g_world.w + (size_t)tx];
+}
+
+bool world_tile_is_dynamic(int tx, int ty) {
+    if (tx < 0 || ty < 0 || tx >= g_world.w || ty >= g_world.h || !g_world.dynamic_tiles) {
+        return false;
+    }
+    return g_world.dynamic_tiles[(size_t)ty * (size_t)g_world.w + (size_t)tx];
 }
 
 bool world_is_walkable_subtile(int sx, int sy) {
@@ -309,6 +335,11 @@ void world_sync_tiled_colliders(const tiled_map_t* map) {
     const uint32_t GID_MASK                  = 0x1FFFFFFF;
     (void)FLIPPED_DIAGONALLY_FLAG;
 
+    size_t total = (size_t)map->width * (size_t)map->height;
+    if (g_world.dynamic_tiles && total > 0) {
+        memset(g_world.dynamic_tiles, 0, total * sizeof(bool));
+    }
+
     for (size_t li = 0; li < map->layer_count; ++li) {
         const tiled_layer_t* layer = &map->layers[li];
         if (!layer->collision) continue;
@@ -338,6 +369,15 @@ void world_sync_tiled_colliders(const tiled_map_t* map) {
                 size_t write_idx = (size_t)y * (size_t)map->width + (size_t)x;
                 g_world.subtile_masks[write_idx] = mask;
                 g_world.tiles[write_idx] = (mask == subtile_full_mask()) ? WORLD_TILE_SOLID : WORLD_TILE_WALKABLE;
+                bool dynamic = false;
+                if (ts->no_merge_collider) {
+                    bool base_flag = (local >= 0 && local < ts->tilecount) ? ts->no_merge_collider[local] : false;
+                    bool draw_flag = (draw_idx >= 0 && draw_idx < ts->tilecount) ? ts->no_merge_collider[draw_idx] : false;
+                    dynamic = base_flag || draw_flag;
+                }
+                if (g_world.dynamic_tiles && dynamic) {
+                    g_world.dynamic_tiles[write_idx] = true;
+                }
             }
         }
     }
