@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <tileset version="1.10" tiledversion="1.11.2" name="props" tilewidth="32" tileheight="32" tilecount="528" columns="24">
- <image source="../../TechAssets/Props and Items/props and items x1.png" width="768" height="704"/>
+ <image source="../images/props and items x1.png" width="768" height="704"/>
  <tile id="288">
   <properties>
    <property name="collider" value="[1111],[1111],[1111],[0000]"/>

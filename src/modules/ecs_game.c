@@ -9,21 +9,17 @@
 #include "../includes/world.h"
 #include "../includes/tiled.h"
 #include "../includes/renderer.h"
+#include "../includes/prefab.h"
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
-int init_entities(int W, int H)
+static void spawn_player_fallback(v2f spawn)
 {
-    tex_handle_t tex_player     = asset_acquire_texture("assets/player.png");
-    tex_handle_t tex_coin       = asset_acquire_texture("assets/coin_gold.png");
-    tex_handle_t tex_npc        = asset_acquire_texture("assets/npc.png");
+    tex_handle_t tex_player = asset_acquire_texture("assets/images/player.png");
+    int pw = 16, ph = 16;
 
-    int pw=16, ph=16, cw=32, ch=32, nw=16, nh=16;
-    v2f spawn = world_get_spawn_px();
-
-    // ADD PLAYER
     ecs_entity_t player = ecs_create();
     cmp_add_position(player, spawn.x, spawn.y);
     cmp_add_velocity(player, 0, 0, DIR_SOUTH);
@@ -91,66 +87,39 @@ int init_entities(int W, int H)
         6.0f
     );
 
-    // ADD COINS
-    const v2f coinPos[3] = {
-        { W/2.0f + 120.0f, H/2.0f },
-        { W/2.0f, H/2.0f - 60.0f },
-        { W/2.0f - 40.0f, H/2.0f + 50.0f }
-    };
-    for(int i=0;i<3;++i){
-        ecs_entity_t c = ecs_create();
-        cmp_add_position(c, coinPos[i].x, coinPos[i].y);
-        cmp_add_sprite_handle(c, tex_coin,
-            (rectf){0,0,(float)cw,(float)ch},
-            cw*0.5f, ch*0.5f);
-        cmp_add_item(c, ITEM_COIN);
-        cmp_add_size(c, cw * 0.25f, ch * 0.25f);
+    asset_release_texture(tex_player);
+}
 
-        int frames_per_anim_coin[1] = { 8 };
-        anim_frame_coord_t anim_frames_coin[1][MAX_FRAMES] = {
-            { {0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5,0},{6, 0}, {7,0} },
-        };
-        cmp_add_anim(
-            c,
-            cw,
-            ch,
-            1,
-            frames_per_anim_coin,
-            anim_frames_coin,
-            8.0f
-        );
+int init_entities(int W, int H)
+{
+    (void)W; (void)H;
+    v2f spawn = world_get_spawn_px();
+
+    // Prefabs from TMX (player, etc.)
+    bool have_map = false;
+    tiled_map_t map = {0};
+    if (tiled_load_map("assets/maps/start.tmx", &map)) {
+        have_map = true;
+        prefab_spawn_from_map(&map, "assets/maps/start.tmx");
+    } else {
+        LOGC(LOGCAT_MAIN, LOG_LVL_WARN, "prefab: failed to load TMX for entity prefabs");
     }
 
-    // ADD NPC/VENDOR
-    ecs_entity_t npc = ecs_create();
-    cmp_add_position(npc, 100.0f, H/2.0f);
-    cmp_add_sprite_handle(npc, tex_npc,
-        (rectf){0,0,(float)nw,(float)nh},
-        nw*0.5f, nh*0.5f);
-    cmp_add_velocity(npc, 0.0f, 0.0f, DIR_SOUTH);
-    cmp_add_vendor(npc, ITEM_HAT, 3);
-    cmp_add_size(npc, 6.0f, 6.0f);
-    cmp_add_liftable(npc);
-    cmp_add_phys_body_default(npc, PHYS_DYNAMIC);
-
-    cmp_add_trigger(npc, 30.0f, CMP_PLAYER | CMP_COL);
-    cmp_add_billboard(npc, "Press E to buy hat", -16.0f, 0.10f, BILLBOARD_ACTIVE);
-
-    // Release setup refs (ECS added its own refs)
-    asset_release_texture(tex_player);
-    asset_release_texture(tex_coin);
-    asset_release_texture(tex_npc);
+    // Fallback if prefab spawn missed the player
+    if (ent_index_checked(ecs_find_player()) < 0) {
+        spawn_player_fallback(spawn);
+    }
 
     // Doors from TMX objects (simple placement + triggers)
-    tiled_map_t door_map;
-    if (tiled_load_map("start.tmx", &door_map)) {
-        for (size_t i = 0; i < door_map.object_count; ++i) {
-            const tiled_object_t *obj = &door_map.objects[i];
+    if (have_map) {
+        const tiled_map_t *door_map = &map;
+        for (size_t i = 0; i < door_map->object_count; ++i) {
+            const tiled_object_t *obj = &door_map->objects[i];
             if (!obj->animationtype) continue;
             if (strcmp(obj->animationtype, "proximity-door") != 0 && strcmp(obj->animationtype, "door") != 0) continue;
 
-            float ow = (obj->w > 0.0f) ? obj->w : (float)door_map.tilewidth;
-            float oh = (obj->h > 0.0f) ? obj->h : (float)door_map.tileheight;
+            float ow = (obj->w > 0.0f) ? obj->w : (float)door_map->tilewidth;
+            float oh = (obj->h > 0.0f) ? obj->h : (float)door_map->tileheight;
             // Tiled object y is bottom by default for gid objects; place at object center
             float px = obj->x + ow * 0.5f;
             float py = obj->y - oh * 0.5f;
@@ -171,10 +140,10 @@ int init_entities(int W, int H)
             } else {
                 float top = obj->y - oh;
                 float left = obj->x;
-                int start_tx = (int)floorf(left / door_map.tilewidth);
-                int end_tx   = (int)ceilf((left + ow) / door_map.tilewidth);
-                int start_ty = (int)floorf(top / door_map.tileheight);
-                int end_ty   = (int)ceilf((top + oh) / door_map.tileheight);
+                int start_tx = (int)floorf(left / door_map->tilewidth);
+                int end_tx   = (int)ceilf((left + ow) / door_map->tilewidth);
+                int start_ty = (int)floorf(top / door_map->tileheight);
+                int end_ty   = (int)ceilf((top + oh) / door_map->tileheight);
                 for (int ty = start_ty; ty < end_ty; ++ty) {
                     for (int tx = start_tx; tx < end_tx; ++tx) {
                         if (tile_count < 4) {
@@ -204,8 +173,8 @@ int init_entities(int W, int H)
                 // Prefer the topmost layer that contains a non-empty tile at this location.
                 // Forward iteration always picked the first layer (e.g. background), so doors
                 // never referenced the actual door tiles placed on higher layers.
-                for (size_t li = door_map.layer_count; li-- > 0; ) {
-                    const tiled_layer_t *layer = &door_map.layers[li];
+                for (size_t li = door_map->layer_count; li-- > 0; ) {
+                    const tiled_layer_t *layer = &door_map->layers[li];
                     if (tx < 0 || ty < 0 || tx >= layer->width || ty >= layer->height) continue;
                     uint32_t gid = layer->gids[(size_t)ty * (size_t)layer->width + (size_t)tx];
                     if (gid == 0) continue;
@@ -218,8 +187,8 @@ int init_entities(int W, int H)
                 uint32_t bare_gid = raw_gid & GID_MASK;
                 int chosen_ts = -1;
                 int local_id = 0;
-                for (size_t si = 0; si < door_map.tileset_count; ++si) {
-                    const tiled_tileset_t *ts = &door_map.tilesets[si];
+                for (size_t si = 0; si < door_map->tileset_count; ++si) {
+                    const tiled_tileset_t *ts = &door_map->tilesets[si];
                     int local = (int)bare_gid - ts->first_gid;
                     if (local < 0 || local >= ts->tilecount) continue;
                     chosen_ts = (int)si;
@@ -251,9 +220,11 @@ int init_entities(int W, int H)
                 }
             }
         }
-        tiled_free_map(&door_map);
     } else {
         LOGC(LOGCAT_MAIN, LOG_LVL_WARN, "Doors: failed to load TMX for door objects");
+    }
+    if (have_map) {
+        tiled_free_map(&map);
     }
     return 0;
 }
@@ -370,7 +341,6 @@ static void try_buy_hat(ecs_entity_t player, ecs_entity_t vendor)
     cmp_vendor_t v  = g_vendor[ib];
     cmp_inventory_t* pInv = &g_inv[ia];
     
-    LOGC(LOGCAT_ECS, LOG_LVL_DEBUG, "HELLO");
     if (v.sells == ITEM_HAT) {
         if (pInv->hasHat) {
             ui_toast(1.5f, "You already have a hat.");
@@ -385,7 +355,7 @@ static void try_buy_hat(ecs_entity_t player, ecs_entity_t vendor)
                 if (asset_texture_valid(cmp_spr[ia].tex))
                     asset_release_texture(cmp_spr[ia].tex);
 
-                tex_handle_t hatTexture = asset_acquire_texture("assets/player_hat.png");
+                tex_handle_t hatTexture = asset_acquire_texture("assets/images/player_hat.png");
                 cmp_spr[ia].tex = hatTexture;
 
                 int w = 16, h = 16;

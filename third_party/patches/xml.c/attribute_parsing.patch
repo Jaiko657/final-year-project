@@ -1,0 +1,136 @@
+diff --git a/src/xml.c b/src/xml.c
+index 8b6b559..4270d10 100644
+--- a/src/xml.c
++++ b/src/xml.c
+@@ -443,67 +443,76 @@ static void xml_skip_whitespace(struct xml_parser* parser) {
+  */
+ static struct xml_attribute** xml_find_attributes(struct xml_parser* parser, struct xml_string* tag_open) {
+ 	xml_parser_info(parser, "find_attributes");
+-	char* tmp;
+-	char* rest = NULL;
+-	char* token;
+-	char* str_name;
+-	char* str_content;
+-	const unsigned char* start_name;
+-	const unsigned char* start_content;
+-	size_t old_elements;
+-	size_t new_elements;
+-	struct xml_attribute* new_attribute;
+-	struct xml_attribute** attributes;
+-	int position;
+-
+-	attributes = calloc(1, sizeof(struct xml_attribute*));
++	struct xml_attribute** attributes = calloc(1, sizeof(struct xml_attribute*));
++	if (!attributes) return NULL;
+ 	attributes[0] = 0;
+ 
+-	tmp = (char*) xml_string_clone(tag_open);
+-
+-	token = xml_strtok_r(tmp, " ", &rest); // skip the first value
+-	if(token == NULL) {
+-		goto cleanup;
+-	}
+-	tag_open->length = strlen(token);
+-
+-	for(token=xml_strtok_r(NULL," ", &rest); token!=NULL; token=xml_strtok_r(NULL," ", &rest)) {
+-		str_name = malloc(strlen(token)+1);
+-		str_content = malloc(strlen(token)+1);
+-		// %s=\"%s\" wasn't working for some reason, ugly hack to make it work
+-		if(sscanf(token, "%[^=]=\"%[^\"]", str_name, str_content) != 2) {
+-			if(sscanf(token, "%[^=]=\'%[^\']", str_name, str_content) != 2) {
+-				free(str_name);
+-				free(str_content);
+-				continue;
+-			}
++	if (!tag_open || !tag_open->buffer) return attributes;
++
++	const unsigned char* buf = tag_open->buffer;
++	size_t len = tag_open->length;
++	size_t pos = 0;
++
++	/* Keep only the tag name in tag_open->length */
++	while (pos < len && !isspace(buf[pos]) && buf[pos] != '/') pos++;
++	tag_open->length = pos;
++
++	while (pos < len) {
++		while (pos < len && isspace(buf[pos])) pos++;
++		if (pos >= len) break;
++		if (buf[pos] == '/') break; /* self-closing */
++
++		size_t name_start = pos;
++		while (pos < len && buf[pos] != '=' && !isspace(buf[pos])) pos++;
++		size_t name_end = pos;
++		while (pos < len && isspace(buf[pos])) pos++;
++		if (pos >= len || buf[pos] != '=') break;
++		pos++; /* skip '=' */
++		while (pos < len && isspace(buf[pos])) pos++;
++		if (pos >= len) break;
++
++		char quote = 0;
++		if (buf[pos] == '"' || buf[pos] == '\'') {
++			quote = (char)buf[pos];
++			pos++;
++		}
++		size_t value_start = pos;
++		if (quote) {
++			while (pos < len && buf[pos] != (unsigned char)quote) pos++;
++		} else {
++			while (pos < len && !isspace(buf[pos])) pos++;
+ 		}
+-		position = token-tmp;
+-		start_name = &tag_open->buffer[position];
+-		start_content = &tag_open->buffer[position + strlen(str_name) + 2];
++		size_t value_end = pos;
++		if (quote && pos < len) pos++; /* consume closing quote */
+ 
+-		new_attribute = malloc(sizeof(struct xml_attribute));
++		struct xml_attribute* new_attribute = malloc(sizeof(struct xml_attribute));
++		if (!new_attribute) break;
+ 		new_attribute->name = malloc(sizeof(struct xml_string));
+-		new_attribute->name->buffer = (unsigned char*)start_name;
+-		new_attribute->name->length = strlen(str_name);
+ 		new_attribute->content = malloc(sizeof(struct xml_string));
+-		new_attribute->content->buffer = (unsigned char*)start_content;
+-		new_attribute->content->length = strlen(str_content);
++		if (!new_attribute->name || !new_attribute->content) {
++			if (new_attribute->name) free(new_attribute->name);
++			if (new_attribute->content) free(new_attribute->content);
++			free(new_attribute);
++			break;
++		}
+ 
+-		old_elements = get_zero_terminated_array_attributes(attributes);
+-		new_elements = old_elements + 1;
+-		attributes = realloc(attributes, (new_elements+1)*sizeof(struct xml_attribute*));
++		new_attribute->name->buffer = buf + name_start;
++		new_attribute->name->length = name_end - name_start;
++		new_attribute->content->buffer = buf + value_start;
++		new_attribute->content->length = value_end - value_start;
+ 
+-		attributes[new_elements-1] = new_attribute;
++		size_t old_elements = get_zero_terminated_array_attributes(attributes);
++		size_t new_elements = old_elements + 1;
++		struct xml_attribute** tmp = realloc(attributes, (new_elements + 1) * sizeof(struct xml_attribute*));
++		if (!tmp) {
++			xml_attribute_free(new_attribute);
++			break;
++		}
++		attributes = tmp;
++		attributes[new_elements - 1] = new_attribute;
+ 		attributes[new_elements] = 0;
+-
+-
+-		free(str_name);
+-		free(str_content);
+ 	}
+ 
+-cleanup:
+-	free(tmp);
+ 	return attributes;
+ }
+ 
+@@ -1126,4 +1135,3 @@ void xml_string_copy(struct xml_string* string, uint8_t* buffer, size_t length)
+ 
+ 	memcpy(buffer, string->buffer, length);
+ }
+-

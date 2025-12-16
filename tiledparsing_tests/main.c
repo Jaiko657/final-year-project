@@ -5,7 +5,7 @@
 
 int main(void) {
     tiled_map_t map;
-    if (!tiled_load_map("../start.tmx", &map)) {
+    if (!tiled_load_map("../assets/maps/start.tmx", &map)) {
         fprintf(stderr, "Unable to load TMX\n");
         return 1;
     }
@@ -31,7 +31,7 @@ int main(void) {
         BeginDrawing();
         ClearBackground(RAYWHITE);
         tiled_renderer_draw(&map, &renderer);
-        DrawText("TMX/TSX parsing PoC (start.tmx)", 10, 10, 20, DARKGRAY);
+        DrawText("TMX/TSX parsing PoC (assets/maps/start.tmx)", 10, 10, 20, DARKGRAY);
         EndDrawing();
     }
 

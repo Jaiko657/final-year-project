@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="20" height="20" tilewidth="32" tileheight="32" infinite="1" nextlayerid="7" nextobjectid="27">
- <tileset firstgid="1" source="textures.tsx"/>
- <tileset firstgid="852" source="props.tsx"/>
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="20" height="20" tilewidth="32" tileheight="32" infinite="1" nextlayerid="7" nextobjectid="31">
+ <tileset firstgid="1" source="../tilesets/textures.tsx"/>
+ <tileset firstgid="852" source="../tilesets/props.tsx"/>
  <layer id="1" name="background" width="20" height="20">
   <data encoding="csv">
    <chunk x="0" y="0" width="16" height="16">
@@ -10,7 +10,7 @@
 0,72,71,72,72,0,72,72,72,0,0,0,0,0,0,0,
 0,72,72,72,72,72,72,72,72,0,0,0,0,0,0,0,
 0,72,72,72,72,72,72,72,72,0,0,0,0,0,0,0,
-0,71,107,70,107,71,72,72,72,0,0,0,0,0,0,0,
+0,71,107,70,107,72,72,72,72,0,0,0,0,0,0,0,
 0,73,74,72,74,73,107,107,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -64,6 +64,32 @@
     <property name="proximity_radius" type="int" value="8"/>
    </properties>
   </object>
-  <object id="26" name="spawn" x="72" y="40" width="16" height="16"/>
+ </objectgroup>
+ <objectgroup id="7" name="entities">
+  <object id="26" name="spawn" x="72" y="40" width="16" height="16">
+   <properties>
+    <property name="entityprefab" value="../prefabs/player.ent"/>
+   </properties>
+  </object>
+  <object id="27" name="coin" x="225" y="127" width="16" height="16">
+   <properties>
+    <property name="entityprefab" value="../prefabs/coin.ent"/>
+   </properties>
+  </object>
+  <object id="28" name="coin" x="224" y="64" width="16" height="16">
+   <properties>
+    <property name="entityprefab" value="../prefabs/coin.ent"/>
+   </properties>
+  </object>
+  <object id="29" name="coin" x="64" y="191" width="16" height="16">
+   <properties>
+    <property name="entityprefab" value="../prefabs/coin.ent"/>
+   </properties>
+  </object>
+  <object id="30" name="npc_vendor" x="136" y="104" width="16" height="16">
+   <properties>
+    <property name="entityprefab" value="../prefabs/npc_vendor.ent"/>
+   </properties>
+  </object>
  </objectgroup>
 </map>

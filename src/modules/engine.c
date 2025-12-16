@@ -16,7 +16,7 @@
 #include <string.h>
 #include <math.h>
 
-static char g_current_tmx_path[256] = "start.tmx";
+static char g_current_tmx_path[256] = "assets/maps/start.tmx";
 
 static void remember_tmx_path(const char* path)
 {

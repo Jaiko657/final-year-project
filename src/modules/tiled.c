@@ -81,6 +81,37 @@ static bool parse_bool_str(const char *s) {
     return false;
 }
 
+static bool str_ieq_local(const char* a, const char* b) {
+    if (!a || !b) return false;
+    while (*a && *b) {
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) return false;
+        ++a; ++b;
+    }
+    return *a == '\0' && *b == '\0';
+}
+
+static void add_object_property(tiled_object_t* obj, char* name, char* value, char* type) {
+    if (!obj || !name) {
+        free(name);
+        free(value);
+        free(type);
+        return;
+    }
+    size_t idx = obj->property_count;
+    tiled_property_t* tmp = (tiled_property_t*)realloc(obj->properties, (idx + 1) * sizeof(tiled_property_t));
+    if (!tmp) {
+        free(name);
+        free(value);
+        free(type);
+        return;
+    }
+    obj->properties = tmp;
+    obj->properties[idx].name = name;
+    obj->properties[idx].type = type;
+    obj->properties[idx].value = value ? value : xstrdup("");
+    obj->property_count = idx + 1;
+}
+
 static bump_alloc_t g_tile_anim_arena;
 static const size_t TILE_ANIM_ARENA_BYTES = 512 * 1024;
 
@@ -204,15 +235,99 @@ static struct xml_document *load_xml_document(const char *path) {
     return xml_parse_document((uint8_t *)clean, trimmed);
 }
 
+// Normalize paths like "a/../b/./c" into "b/c" without touching the filesystem
+static char *normalize_path(const char *path) {
+    if (!path) return NULL;
+    size_t len = strlen(path);
+    char *tmp = (char *)malloc(len + 1);
+    if (!tmp) return NULL;
+    memcpy(tmp, path, len + 1);
+
+    char **stack = (char **)malloc((len / 2 + 2) * sizeof(char *));
+    if (!stack) {
+        free(tmp);
+        return NULL;
+    }
+
+    size_t sp = 0;
+    bool absolute = len > 0 && (path[0] == '/' || path[0] == '\\');
+
+    char *p = tmp;
+    while (*p) {
+        while (*p == '/' || *p == '\\') {
+            *p = '\0';
+            p++;
+        }
+        if (!*p) break;
+
+        char *seg = p;
+        while (*p && *p != '/' && *p != '\\') p++;
+        if (*p) {
+            *p = '\0';
+            p++;
+        }
+
+        if (strcmp(seg, ".") == 0) continue;
+        if (strcmp(seg, "..") == 0) {
+            if (sp > 0 && strcmp(stack[sp - 1], "..") != 0) {
+                sp--;
+            } else if (!absolute) {
+                stack[sp++] = seg;
+            }
+            continue;
+        }
+
+        stack[sp++] = seg;
+    }
+
+    if (sp == 0 && !absolute) {
+        free(stack);
+        free(tmp);
+        char *out = (char *)malloc(2);
+        if (out) {
+            out[0] = '.';
+            out[1] = '\0';
+        }
+        return out;
+    }
+
+    size_t out_len = absolute ? 1 : 0;
+    for (size_t i = 0; i < sp; ++i) {
+        out_len += strlen(stack[i]);
+        if (i + 1 < sp) out_len += 1;
+    }
+
+    char *out = (char *)malloc(out_len + 1);
+    if (!out) {
+        free(stack);
+        free(tmp);
+        return NULL;
+    }
+
+    size_t pos = 0;
+    if (absolute) out[pos++] = '/';
+    for (size_t i = 0; i < sp; ++i) {
+        size_t slen = strlen(stack[i]);
+        memcpy(out + pos, stack[i], slen);
+        pos += slen;
+        if (i + 1 < sp) out[pos++] = '/';
+    }
+    out[pos] = '\0';
+
+    free(stack);
+    free(tmp);
+    return out;
+}
+
 static char *join_relative(const char *base_path, const char *rel) {
     if (!rel || rel[0] == '\0') return NULL;
-    if (rel[0] == '/' || rel[0] == '\\') return xstrdup(rel);
+    if (rel[0] == '/' || rel[0] == '\\') return normalize_path(rel);
     const char *slash = strrchr(base_path, '/');
 #ifdef _WIN32
     const char *bslash = strrchr(base_path, '\\');
     if (!slash || (bslash && bslash > slash)) slash = bslash;
 #endif
-    if (!slash) return xstrdup(rel);
+    if (!slash) return normalize_path(rel);
     size_t dir_len = (size_t)(slash - base_path) + 1;
     size_t rel_len = strlen(rel);
     char *buf = (char *)malloc(dir_len + rel_len + 1);
@@ -220,7 +335,9 @@ static char *join_relative(const char *base_path, const char *rel) {
     memcpy(buf, base_path, dir_len);
     memcpy(buf + dir_len, rel, rel_len);
     buf[dir_len + rel_len] = '\0';
-    return buf;
+    char *out = normalize_path(buf);
+    free(buf);
+    return out;
 }
 
 static bool parse_csv_gids(const char *csv, size_t expected, uint32_t *out) {
@@ -741,6 +858,14 @@ static void free_objects(tiled_map_t *map) {
         tiled_object_t *o = &map->objects[i];
         free(o->name);
         free(o->animationtype);
+        if (o->properties) {
+            for (size_t p = 0; p < o->property_count; ++p) {
+                free(o->properties[p].name);
+                free(o->properties[p].type);
+                free(o->properties[p].value);
+            }
+        }
+        free(o->properties);
     }
     free(map->objects);
     map->objects = NULL;
@@ -772,17 +897,21 @@ static void parse_object(struct xml_node *obj_node, tiled_object_t *out) {
             char *pname = node_attr_strdup(prop, "name");
             if (!pname) continue;
             char *pval = node_attr_strdup(prop, "value");
+            if (!pval) {
+                struct xml_string *pv = xml_node_content(prop);
+                pval = xml_string_dup(pv);
+            }
+            char *ptype = node_attr_strdup(prop, "type");
+            if (!pval) pval = xstrdup("");
             if (strcmp(pname, "animationtype") == 0) {
-                out->animationtype = pval ? pval : xstrdup("");
+                out->animationtype = xstrdup(pval);
             } else if (strcmp(pname, "proximity_radius") == 0 && pval) {
                 out->proximity_radius = atoi(pval);
-                free(pval);
             } else if (strcmp(pname, "proximity_offset") == 0 && pval) {
                 int ox = 0, oy = 0;
                 sscanf(pval, "%d,%d", &ox, &oy);
                 out->proximity_off_x = ox;
                 out->proximity_off_y = oy;
-                free(pval);
             } else if (strcmp(pname, "door_tiles") == 0 && pval) {
                 // format: "x1,y1;x2,y2"
                 const char *s = pval;
@@ -799,11 +928,8 @@ static void parse_object(struct xml_node *obj_node, tiled_object_t *out) {
                     s = sep + 1;
                 }
                 out->door_tile_count = count;
-                free(pval);
-            } else {
-                free(pval);
             }
-            free(pname);
+            add_object_property(out, pname, pval, ptype);
         }
     }
 }
@@ -975,6 +1101,22 @@ bool tiled_load_map(const char *tmx_path, tiled_map_t *out_map) {
         return false;
     }
     return true;
+}
+
+const tiled_property_t* tiled_object_get_property(const tiled_object_t* obj, const char* name) {
+    if (!obj || !name) return NULL;
+    for (size_t i = 0; i < obj->property_count; ++i) {
+        const tiled_property_t* p = &obj->properties[i];
+        if (p->name && str_ieq_local(p->name, name)) {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+const char* tiled_object_get_property_value(const tiled_object_t* obj, const char* name) {
+    const tiled_property_t* p = tiled_object_get_property(obj, name);
+    return p ? p->value : NULL;
 }
 
 void tiled_free_map(tiled_map_t *map) {

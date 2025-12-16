@@ -42,6 +42,12 @@ typedef struct {
 } tiled_layer_t;
 
 typedef struct {
+    char *name;   // heap-allocated
+    char *type;   // optional, e.g., "int","bool"
+    char *value;  // heap-allocated (empty string if omitted)
+} tiled_property_t;
+
+typedef struct {
     int id;
     int gid;
     char *name;       // optional
@@ -52,6 +58,8 @@ typedef struct {
     int   proximity_off_y;
     int   door_tile_count;
     int   door_tiles[4][2]; // tile coordinates (x,y) this object controls, up to 4
+    size_t property_count;
+    tiled_property_t *properties; // property_count entries
 } tiled_object_t;
 
 typedef struct {
@@ -87,3 +95,6 @@ typedef void (*tiled_painter_emit_fn)(const tiled_painter_tile_t *tile, void *ud
 bool tiled_renderer_init(tiled_renderer_t *r, const tiled_map_t *map);
 void tiled_renderer_shutdown(tiled_renderer_t *r);
 void tiled_renderer_draw(const tiled_map_t *map, const tiled_renderer_t *r, const Rectangle *view, tiled_painter_emit_fn emit_painter, void *emit_ud);
+
+const tiled_property_t* tiled_object_get_property(const tiled_object_t* obj, const char* name);
+const char* tiled_object_get_property_value(const tiled_object_t* obj, const char* name);

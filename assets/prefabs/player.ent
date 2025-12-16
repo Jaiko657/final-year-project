@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prefab name="player">
+  <component type="VEL" x="0" y="0" dir="south"/>
+  <component type="SPR" path="assets/images/player.png" src="0,16,16,16" ox="8" oy="8"/>
+  <component type="PLAYER"/>
+  <component type="INV"/>
+  <component type="COL" hx="8" hy="8"/>
+  <component type="PHYS_BODY">
+    <property name="type" value="dynamic"/>
+  </component>
+  <component type="TRIGGER" pad="0" target_mask="ITEM|COL"/>
+  <component type="ANIM" frame_w="16" frame_h="16" fps="6">
+    <anim name="walk_n">
+      <frame col="0" row="0"/>
+      <frame col="0" row="2"/>
+    </anim>
+    <anim name="walk_ne">
+      <frame col="1" row="0"/>
+      <frame col="1" row="2"/>
+    </anim>
+    <anim name="walk_e">
+      <frame col="2" row="0"/>
+      <frame col="2" row="2"/>
+    </anim>
+    <anim name="walk_se">
+      <frame col="3" row="0"/>
+      <frame col="3" row="2"/>
+    </anim>
+    <anim name="walk_s">
+      <frame col="4" row="0"/>
+      <frame col="4" row="2"/>
+    </anim>
+    <anim name="walk_sw">
+      <frame col="5" row="0"/>
+      <frame col="5" row="2"/>
+    </anim>
+    <anim name="walk_w">
+      <frame col="6" row="0"/>
+      <frame col="6" row="2"/>
+    </anim>
+    <anim name="walk_nw">
+      <frame col="7" row="0"/>
+      <frame col="7" row="2"/>
+    </anim>
+    <anim name="idle_n">
+      <frame col="0" row="1"/>
+    </anim>
+    <anim name="idle_ne">
+      <frame col="1" row="1"/>
+    </anim>
+    <anim name="idle_e">
+      <frame col="2" row="1"/>
+    </anim>
+    <anim name="idle_se">
+      <frame col="3" row="1"/>
+    </anim>
+    <anim name="idle_s">
+      <frame col="4" row="1"/>
+    </anim>
+    <anim name="idle_sw">
+      <frame col="5" row="1"/>
+    </anim>
+    <anim name="idle_w">
+      <frame col="6" row="1"/>
+    </anim>
+    <anim name="idle_nw">
+      <frame col="7" row="1"/>
+    </anim>
+  </component>
+</prefab>
