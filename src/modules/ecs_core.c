@@ -3,6 +3,7 @@
 #include "../includes/world.h"
 #include "../includes/world_physics.h"
 #include "../includes/renderer.h"
+#include "../includes/dynarray.h"
 #include <math.h>
 #include <string.h>
 
@@ -236,6 +237,9 @@ void ecs_destroy(ecs_entity_t e)
         cmp_phys_body[idx].cp_body = NULL;
         cmp_phys_body[idx].cp_shape = NULL;
     }
+    if (ecs_mask[idx] & CMP_DOOR) {
+        DA_FREE(&cmp_door[idx].tiles);
+    }
 
     uint32_t g = ecs_gen[idx];
     g = (g + 1) ? (g + 1) : 1;
@@ -297,7 +301,24 @@ void cmp_add_follow(ecs_entity_t e, ecs_entity_t target, float desired_distance,
     int i = ent_index_checked(e);
     if (i < 0) return;
 
-    cmp_follow[i] = (cmp_follow_t){ target, desired_distance, max_speed };
+    cmp_follow_t f = {
+        .target           = target,
+        .desired_distance = desired_distance,
+        .max_speed        = max_speed,
+        .vision_range     = -1.0f,
+        .last_seen_x      = 0.0f,
+        .last_seen_y      = 0.0f,
+        .has_last_seen    = false
+    };
+
+    int t_idx = ent_index_checked(target);
+    if (t_idx >= 0 && (ecs_mask[t_idx] & CMP_POS)) {
+        f.last_seen_x   = cmp_pos[t_idx].x;
+        f.last_seen_y   = cmp_pos[t_idx].y;
+        f.has_last_seen = true;
+    }
+
+    cmp_follow[i] = f;
     ecs_mask[i] |= CMP_FOLLOW;
 }
 
@@ -378,25 +399,34 @@ void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type)
     cmp_add_phys_body(e, type, PHYS_DEFAULT_MASS, PHYS_DEFAULT_RESTITUTION, PHYS_DEFAULT_FRICTION);
 }
 
-void cmp_add_door(ecs_entity_t e, float prox_radius, float prox_off_x, float prox_off_y, int tile_count, const int (*tile_xy)[2])
+void cmp_add_door(ecs_entity_t e, float prox_radius, float prox_off_x, float prox_off_y, int tile_count, const door_tile_xy_t* tile_xy)
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
-    memset(&cmp_door[i], 0, sizeof(cmp_door[i]));
-    cmp_door[i].prox_radius = prox_radius;
-    cmp_door[i].prox_off_x = prox_off_x;
-    cmp_door[i].prox_off_y = prox_off_y;
+    cmp_door_t* d = &cmp_door[i];
+    DA_FREE(&d->tiles);
+    memset(d, 0, sizeof(*d));
+    d->prox_radius = prox_radius;
+    d->prox_off_x = prox_off_x;
+    d->prox_off_y = prox_off_y;
     if (tile_xy && tile_count > 0) {
-        if (tile_count > 4) tile_count = 4;
-        cmp_door[i].tile_count = tile_count;
+        DA_RESERVE(&d->tiles, tile_count);
         for (int t = 0; t < tile_count; ++t) {
-            cmp_door[i].tiles[t].x = tile_xy[t][0];
-            cmp_door[i].tiles[t].y = tile_xy[t][1];
+            door_tile_info_t info = {
+                .x = tile_xy[t].x,
+                .y = tile_xy[t].y,
+                .layer_idx = -1,
+                .tileset_idx = -1,
+                .base_tile_id = 0,
+                .flip_flags = 0
+            };
+            DA_APPEND(&d->tiles, info);
         }
     }
-    cmp_door[i].state = DOOR_CLOSED;
-    cmp_door[i].current_frame = 0;
-    cmp_door[i].anim_time_ms = 0.0f;
+    d->state = DOOR_CLOSED;
+    d->current_frame = 0;
+    d->anim_time_ms = 0.0f;
+    d->intent_open = false;
     ecs_mask[i] |= CMP_DOOR;
 }
 
@@ -474,6 +504,17 @@ static void sys_input(float dt, const input_t* in)
 static void sys_follow(float dt)
 {
     (void)dt;
+    const int subtile = world_subtile_size();
+    const float stop_at_last_seen = (subtile > 0) ? (float)subtile * 0.35f : 4.0f;
+    const float deg_to_rad = 0.01745329251994329577f;
+    const float angles[] = {
+        0.0f,
+        30.0f * deg_to_rad,  -30.0f * deg_to_rad,
+        60.0f * deg_to_rad,  -60.0f * deg_to_rad,
+        90.0f * deg_to_rad,  -90.0f * deg_to_rad,
+        150.0f * deg_to_rad, -150.0f * deg_to_rad,
+        180.0f * deg_to_rad
+    };
 
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
         if (!ecs_alive_idx(e)) continue;
@@ -496,12 +537,45 @@ static void sys_follow(float dt)
             continue;
         }
 
-        float dx = cmp_pos[target_idx].x - cmp_pos[e].x;
-        float dy = cmp_pos[target_idx].y - cmp_pos[e].y;
-        float desired = f->desired_distance;
+        float follower_x = cmp_pos[e].x;
+        float follower_y = cmp_pos[e].y;
+        float target_x = cmp_pos[target_idx].x;
+        float target_y = cmp_pos[target_idx].y;
+        float clear_hx = 0.0f;
+        float clear_hy = 0.0f;
+        if (ecs_mask[e] & CMP_COL) {
+            clear_hx = cmp_col[e].hx + 1.0f;
+            clear_hy = cmp_col[e].hy + 1.0f;
+        } else {
+            clear_hx = clear_hy = (subtile > 0) ? (float)subtile * 0.5f : 4.0f;
+        }
 
+        bool can_see = world_has_line_of_sight(follower_x, follower_y, target_x, target_y, f->vision_range, clear_hx, clear_hy);
+        if (can_see) {
+            f->last_seen_x = target_x;
+            f->last_seen_y = target_y;
+            f->has_last_seen = true;
+        }
+
+        float goal_x = 0.0f, goal_y = 0.0f, stop_radius = 0.0f;
+        if (can_see) {
+            goal_x = target_x;
+            goal_y = target_y;
+            stop_radius = f->desired_distance;
+        } else if (f->has_last_seen) {
+            goal_x = f->last_seen_x;
+            goal_y = f->last_seen_y;
+            stop_radius = stop_at_last_seen;
+        } else {
+            cmp_vel[e].x = 0.0f;
+            cmp_vel[e].y = 0.0f;
+            continue;
+        }
+
+        float dx = goal_x - follower_x;
+        float dy = goal_y - follower_y;
         float dist2 = dx * dx + dy * dy;
-        if (dist2 <= desired * desired) {
+        if (dist2 <= stop_radius * stop_radius) {
             cmp_vel[e].x = 0.0f;
             cmp_vel[e].y = 0.0f;
             continue;
@@ -517,8 +591,37 @@ static void sys_follow(float dt)
         float dirx = dx / dist;
         float diry = dy / dist;
 
-        cmp_vel[e].x = dirx * f->max_speed;
-        cmp_vel[e].y = diry * f->max_speed;
+        float probe = (subtile > 0) ? (float)subtile * 1.5f : 12.0f;
+        if (probe < clear_hx * 2.0f) probe = clear_hx * 2.0f;
+        if (probe < clear_hy * 2.0f) probe = clear_hy * 2.0f;
+
+        float chosen_dx = dirx;
+        float chosen_dy = diry;
+        bool found_clear = false;
+        for (size_t ai = 0; ai < sizeof(angles)/sizeof(angles[0]); ++ai) {
+            float ang = angles[ai];
+            float s = sinf(ang);
+            float c = cosf(ang);
+            float rx = dirx * c - diry * s;
+            float ry = dirx * s + diry * c;
+            float end_x = follower_x + rx * probe;
+            float end_y = follower_y + ry * probe;
+            if (world_has_line_of_sight(follower_x, follower_y, end_x, end_y, probe, clear_hx, clear_hy)) {
+                chosen_dx = rx;
+                chosen_dy = ry;
+                found_clear = true;
+                break;
+            }
+        }
+
+        if (!found_clear && !world_is_walkable_rect_px(follower_x, follower_y, clear_hx, clear_hy)) {
+            cmp_vel[e].x = 0.0f;
+            cmp_vel[e].y = 0.0f;
+            continue;
+        }
+
+        cmp_vel[e].x = chosen_dx * f->max_speed;
+        cmp_vel[e].y = chosen_dy * f->max_speed;
     }
 }
 

@@ -111,6 +111,8 @@ ecs_entity_t ecs_find_player(void);
 ecs_entity_t ecs_create(void);
 void         ecs_destroy(ecs_entity_t e);
 
+typedef struct { int x, y; } door_tile_xy_t;
+
 void cmp_add_position (ecs_entity_t e, float x, float y);
 void cmp_add_velocity(ecs_entity_t e, float x, float y, facing_t direction);
 void cmp_add_sprite_handle(ecs_entity_t e, tex_handle_t h, rectf src, float ox, float oy);
@@ -131,7 +133,7 @@ void cmp_add_size     (ecs_entity_t e, float hx, float hy); // AABB half-extents
 void cmp_add_liftable (ecs_entity_t e);
 void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float restitution, float friction);
 void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type);
-void cmp_add_door(ecs_entity_t e, float prox_radius, float prox_off_x, float prox_off_y, int tile_count, const int (*tile_xy)[2]);
+void cmp_add_door(ecs_entity_t e, float prox_radius, float prox_off_x, float prox_off_y, int tile_count, const door_tile_xy_t* tile_xy);
 
 // ====== Update & render ======
 void ecs_tick(float fixed_dt, const input_t* in);

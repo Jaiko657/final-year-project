@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include "ecs.h"
 #include "ecs_physics.h"
+#include "dynarray.h"
 
 // ===== Internal component storage types =====
 typedef struct { float x, y; } cmp_position_t;
@@ -11,6 +12,10 @@ typedef struct {
     ecs_entity_t target;
     float desired_distance;
     float max_speed;
+    float vision_range;
+    float last_seen_x;
+    float last_seen_y;
+    bool  has_last_seen;
 } cmp_follow_t;
 
 typedef struct {
@@ -68,15 +73,20 @@ typedef struct {
 } cmp_liftable_t;
 
 typedef struct {
+    int x, y;
+    int layer_idx;
+    int tileset_idx;
+    int base_tile_id;
+    uint32_t flip_flags;
+} door_tile_info_t;
+typedef DA(door_tile_xy_t) door_tile_xy_list_t;
+typedef DA(door_tile_info_t) door_tile_info_list_t;
+
+typedef struct {
     float prox_radius;
     float prox_off_x;
     float prox_off_y;
-    int tile_count;
-    struct { int x, y; } tiles[4];
-    int layer_idx[4];
-    int tileset_idx[4];
-    int base_tile_id[4];
-    uint32_t flip_flags[4];
+    door_tile_info_list_t tiles;
     int current_frame;
     float anim_time_ms;
     bool intent_open;

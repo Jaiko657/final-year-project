@@ -630,15 +630,20 @@ static void apply_vendor_component(const prefab_component_t* comp, const tiled_o
 }
 
 static void apply_follow_component(const prefab_component_t* comp, const tiled_object_t* obj, ecs_entity_t e) {
-    float dist = 0.0f, speed = 0.0f;
+    float dist = 0.0f, speed = 0.0f, vision = -1.0f;
     parse_float(combined_value(comp, obj, "desired_distance"), &dist);
     parse_float(combined_value(comp, obj, "max_speed"), &speed);
+    parse_float(combined_value(comp, obj, "vision_range"), &vision);
     ecs_entity_t target = ecs_null();
     const char* target_str = combined_value(comp, obj, "target");
     if (target_str && strcasecmp(target_str, "player") == 0) {
         target = ecs_find_player();
     }
     cmp_add_follow(e, target, dist, speed);
+    int idx = ent_index_checked(e);
+    if (idx >= 0) {
+        cmp_follow[idx].vision_range = vision;
+    }
 }
 
 static void apply_col_component(const prefab_component_t* comp, const tiled_object_t* obj, ecs_entity_t e) {
@@ -682,22 +687,22 @@ static void apply_billboard_component(const prefab_component_t* comp, const tile
     cmp_add_billboard(e, text, y_off, linger, state);
 }
 
-static int parse_door_tiles(const char* s, int (*out_xy)[2], int max_pairs) {
-    if (!s || !out_xy || max_pairs <= 0) return 0;
-    int count = 0;
+typedef DA(door_tile_xy_t) door_tile_xy_da_t;
+
+static int parse_door_tiles(const char* s, door_tile_xy_da_t* out_xy) {
+    if (!s || !out_xy) return 0;
+    DA_CLEAR(out_xy);
     const char* p = s;
-    while (*p && count < max_pairs) {
+    while (*p) {
         int tx = 0, ty = 0;
         if (sscanf(p, "%d,%d", &tx, &ty) == 2) {
-            out_xy[count][0] = tx;
-            out_xy[count][1] = ty;
-            count++;
+            DA_APPEND(out_xy, ((door_tile_xy_t){ tx, ty }));
         }
         const char* sep = strchr(p, ';');
         if (!sep) break;
         p = sep + 1;
     }
-    return count;
+    return (int)out_xy->size;
 }
 
 static void apply_door_component(const prefab_component_t* comp, const tiled_object_t* obj, ecs_entity_t e) {
@@ -707,13 +712,14 @@ static void apply_door_component(const prefab_component_t* comp, const tiled_obj
     parse_float(combined_value(comp, obj, "proximity_off_x"), &prox_ox);
     parse_float(combined_value(comp, obj, "proximity_off_y"), &prox_oy);
 
-    int tiles[4][2] = {0};
-    int tile_count = parse_door_tiles(combined_value(comp, obj, "tiles"), tiles, 4);
+    door_tile_xy_da_t tiles = {0};
+    int tile_count = parse_door_tiles(combined_value(comp, obj, "tiles"), &tiles);
     if (tile_count <= 0) {
-        tile_count = parse_door_tiles(combined_value(comp, obj, "door_tiles"), tiles, 4);
+        tile_count = parse_door_tiles(combined_value(comp, obj, "door_tiles"), &tiles);
     }
 
-    cmp_add_door(e, prox_r, prox_ox, prox_oy, tile_count, tile_count > 0 ? tiles : NULL);
+    cmp_add_door(e, prox_r, prox_ox, prox_oy, tile_count, tile_count > 0 ? tiles.data : NULL);
+    DA_FREE(&tiles);
 }
 
 static void apply_component(const prefab_component_t* comp, const tiled_object_t* obj, ecs_entity_t e, bool* added_pos) {

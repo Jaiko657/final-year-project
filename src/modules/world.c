@@ -283,6 +283,54 @@ bool world_is_walkable_px(float x, float y) {
     return world_is_walkable_subtile(sx, sy);
 }
 
+bool world_is_walkable_rect_px(float cx, float cy, float hx, float hy) {
+    int ss = world_subtile_size();
+    if (ss <= 0 || g_world.w <= 0 || g_world.h <= 0) return false;
+
+    float left   = cx - hx;
+    float right  = cx + hx;
+    float bottom = cy - hy;
+    float top    = cy + hy;
+
+    int sx0 = (int)floorf(left / (float)ss);
+    int sx1 = (int)floorf(right / (float)ss);
+    int sy0 = (int)floorf(bottom / (float)ss);
+    int sy1 = (int)floorf(top / (float)ss);
+
+    for (int sy = sy0; sy <= sy1; ++sy) {
+        for (int sx = sx0; sx <= sx1; ++sx) {
+            if (!world_is_walkable_subtile(sx, sy)) return false;
+        }
+    }
+    return true;
+}
+
+bool world_has_line_of_sight(float x0, float y0, float x1, float y1, float max_range, float hx, float hy) {
+    int ss = world_subtile_size();
+    if (ss <= 0 || g_world.w <= 0 || g_world.h <= 0) return false;
+
+    float dx = x1 - x0;
+    float dy = y1 - y0;
+    float dist2 = dx * dx + dy * dy;
+    if (dist2 <= 0.0f) return true;
+    if (max_range > 0.0f && dist2 > max_range * max_range) return false;
+
+    float dist = sqrtf(dist2);
+    float step = (float)ss * 0.5f;
+    if (step <= 0.0f) step = 4.0f;
+    int steps = (int)ceilf(dist / step);
+    if (steps < 1) steps = 1;
+    float inv_steps = 1.0f / (float)steps;
+
+    for (int i = 0; i <= steps; ++i) {
+        float t = (float)i * inv_steps;
+        float px = x0 + dx * t;
+        float py = y0 + dy * t;
+        if (!world_is_walkable_rect_px(px, py, hx, hy)) return false;
+    }
+    return true;
+}
+
 v2f world_get_spawn_px(void) {
     if (!g_world.tiles) {
         return v2f_make(0.0f, 0.0f);

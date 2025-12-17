@@ -104,9 +104,8 @@ static bool engine_init_subsystems(const char *title)
     remember_tmx_path(g_current_tmx_path);
 
     // game entities/assets
-    int texture_success = init_entities(32*10, 32*10);
-    if (texture_success != 0) {
-        LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "init_entities failed (%d)", texture_success);
+    if (!init_entities(g_current_tmx_path)) {
+        LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "init_entities failed");
         return false;
     }
 

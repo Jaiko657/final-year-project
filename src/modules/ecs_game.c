@@ -6,227 +6,139 @@
 #include "../includes/ecs_game.h"
 #include "../includes/asset.h"
 #include "../includes/logger.h"
-#include "../includes/world.h"
 #include "../includes/tiled.h"
-#include "../includes/renderer.h"
 #include "../includes/prefab.h"
+#include "../includes/dynarray.h"
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
-static void spawn_player_fallback(v2f spawn)
+typedef DA(door_tile_xy_t) door_tile_xy_da_t;
+
+static int collect_door_tiles(const tiled_map_t* map, const tiled_object_t* obj, door_tile_xy_da_t* tiles_xy)
 {
-    tex_handle_t tex_player = asset_acquire_texture("assets/images/player.png");
-    int pw = 16, ph = 16;
-
-    ecs_entity_t player = ecs_create();
-    cmp_add_position(player, spawn.x, spawn.y);
-    cmp_add_velocity(player, 0, 0, DIR_SOUTH);
-    cmp_add_sprite_handle(player, tex_player,
-        (rectf){0,16,(float)pw,(float)ph},
-        pw*0.5f, ph*0.5f);
-    cmp_add_player(player);
-    cmp_add_inventory(player);
-    cmp_add_size(player, pw/2, ph/2);
-    cmp_add_phys_body_default(player, PHYS_DYNAMIC);
-    cmp_add_trigger(player, 0.0f, CMP_ITEM | CMP_COL);
-
-    enum {
-        ANIM_WALK_N = 0,
-        ANIM_WALK_NE,
-        ANIM_WALK_E,
-        ANIM_WALK_SE,
-        ANIM_WALK_S,
-        ANIM_WALK_SW,
-        ANIM_WALK_W,
-        ANIM_WALK_NW,
-
-        ANIM_IDLE_N,
-        ANIM_IDLE_NE,
-        ANIM_IDLE_E,
-        ANIM_IDLE_SE,
-        ANIM_IDLE_S,
-        ANIM_IDLE_SW,
-        ANIM_IDLE_W,
-        ANIM_IDLE_NW,
-
-        ANIM_COUNT
-    };
-    int frames_per_anim[ANIM_COUNT] = {
-        2,2,2,2,2,2,2,2,
-        1,1,1,1,1,1,1,1
-    };
-    anim_frame_coord_t anim_frames[ANIM_COUNT][MAX_FRAMES] = {
-        //WALKING
-        { {0,0}, {0,2} },
-        { {1,0}, {1,2} },
-        { {2,0}, {2,2} },
-        { {3,0}, {3,2} },
-        { {4,0}, {4,2} },
-        { {5,0}, {5,2} },
-        { {6,0}, {6,2} },
-        { {7,0}, {7,2} },
-        //IDLE
-        { {0,1} },
-        { {1,1} },
-        { {2,1} },
-        { {3,1} },
-        { {4,1} },
-        { {5,1} },
-        { {6,1} },
-        { {7,1} },
-    };
-    cmp_add_anim(
-        player,
-        16,
-        16,
-        ANIM_COUNT,
-        frames_per_anim,
-        anim_frames,
-        6.0f
-    );
-
-    asset_release_texture(tex_player);
-}
-
-int init_entities(int W, int H)
-{
-    (void)W; (void)H;
-    v2f spawn = world_get_spawn_px();
-
-    // Prefabs from TMX (player, etc.)
-    bool have_map = false;
-    tiled_map_t map = {0};
-    if (tiled_load_map("assets/maps/start.tmx", &map)) {
-        have_map = true;
-        prefab_spawn_from_map(&map, "assets/maps/start.tmx");
-    } else {
-        LOGC(LOGCAT_MAIN, LOG_LVL_WARN, "prefab: failed to load TMX for entity prefabs");
-    }
-
-    // Fallback if prefab spawn missed the player
-    if (ent_index_checked(ecs_find_player()) < 0) {
-        spawn_player_fallback(spawn);
-    }
-
-    // Doors from TMX objects (simple placement + triggers)
-    if (have_map) {
-        const tiled_map_t *door_map = &map;
-        for (size_t i = 0; i < door_map->object_count; ++i) {
-            const tiled_object_t *obj = &door_map->objects[i];
-            if (!obj->animationtype) continue;
-            if (strcmp(obj->animationtype, "proximity-door") != 0 && strcmp(obj->animationtype, "door") != 0) continue;
-
-            float ow = (obj->w > 0.0f) ? obj->w : (float)door_map->tilewidth;
-            float oh = (obj->h > 0.0f) ? obj->h : (float)door_map->tileheight;
-            // Tiled object y is bottom by default for gid objects; place at object center
-            float px = obj->x + ow * 0.5f;
-            float py = obj->y - oh * 0.5f;
-
-            float prox_r = (obj->proximity_radius > 0) ? (float)obj->proximity_radius : 64.0f;
-            float prox_ox = (float)obj->proximity_off_x;
-            float prox_oy = (float)obj->proximity_off_y;
-
-            // Determine which tiles this door covers: prefer explicit door_tiles property, fallback to size
-            int tiles_xy[4][2];
-            int tile_count = 0;
-            if (obj->door_tile_count > 0) {
-                tile_count = obj->door_tile_count > 4 ? 4 : obj->door_tile_count;
-                for (int t = 0; t < tile_count; ++t) {
-                    tiles_xy[t][0] = obj->door_tiles[t][0];
-                    tiles_xy[t][1] = obj->door_tiles[t][1];
-                }
-            } else {
-                float top = obj->y - oh;
-                float left = obj->x;
-                int start_tx = (int)floorf(left / door_map->tilewidth);
-                int end_tx   = (int)ceilf((left + ow) / door_map->tilewidth);
-                int start_ty = (int)floorf(top / door_map->tileheight);
-                int end_ty   = (int)ceilf((top + oh) / door_map->tileheight);
-                for (int ty = start_ty; ty < end_ty; ++ty) {
-                    for (int tx = start_tx; tx < end_tx; ++tx) {
-                        if (tile_count < 4) {
-                            tiles_xy[tile_count][0] = tx;
-                            tiles_xy[tile_count][1] = ty;
-                            tile_count++;
-                        }
-                    }
-                }
-            }
-
-            // Resolve layer and tileset info for the tiles this door controls
-            const uint32_t FLIP_H = 0x80000000;
-            const uint32_t FLIP_V = 0x40000000;
-            const uint32_t FLIP_D = 0x20000000;
-            const uint32_t GID_MASK = 0x1FFFFFFF;
-            int layer_idx[4] = {0};
-            int ts_idx[4] = {0};
-            int base_tile[4] = {0};
-            uint32_t flips[4] = {0};
-
-            for (int t = 0; t < tile_count; ++t) {
-                int tx = tiles_xy[t][0];
-                int ty = tiles_xy[t][1];
-                uint32_t raw_gid = 0;
-                int found_layer = -1;
-                // Prefer the topmost layer that contains a non-empty tile at this location.
-                // Forward iteration always picked the first layer (e.g. background), so doors
-                // never referenced the actual door tiles placed on higher layers.
-                for (size_t li = door_map->layer_count; li-- > 0; ) {
-                    const tiled_layer_t *layer = &door_map->layers[li];
-                    if (tx < 0 || ty < 0 || tx >= layer->width || ty >= layer->height) continue;
-                    uint32_t gid = layer->gids[(size_t)ty * (size_t)layer->width + (size_t)tx];
-                    if (gid == 0) continue;
-                    raw_gid = gid;
-                    found_layer = (int)li;
-                    break;
-                }
-                layer_idx[t] = found_layer;
-                flips[t] = raw_gid & (FLIP_H | FLIP_V | FLIP_D);
-                uint32_t bare_gid = raw_gid & GID_MASK;
-                int chosen_ts = -1;
-                int local_id = 0;
-                for (size_t si = 0; si < door_map->tileset_count; ++si) {
-                    const tiled_tileset_t *ts = &door_map->tilesets[si];
-                    int local = (int)bare_gid - ts->first_gid;
-                    if (local < 0 || local >= ts->tilecount) continue;
-                    chosen_ts = (int)si;
-                    local_id = local;
-                }
-                ts_idx[t] = chosen_ts;
-                base_tile[t] = local_id;
-            }
-
-            ecs_entity_t door = ecs_create();
-            cmp_add_position(door, px, py);
-            cmp_add_size(door, ow * 0.5f, oh * 0.5f); // gives CMP_COL for proximity system
-            cmp_add_trigger(door, prox_r, CMP_PLAYER | CMP_COL);
-            cmp_add_door(door,
-                         prox_r,
-                         prox_ox,
-                         prox_oy,
-                         tile_count,
-                         tile_count > 0 ? tiles_xy : NULL);
-
-            // store extra tile info directly in cmp_door
-            int di = ent_index_checked(door);
-            if (di >= 0) {
-                for (int t = 0; t < tile_count; ++t) {
-                    cmp_door[di].layer_idx[t] = layer_idx[t];
-                    cmp_door[di].tileset_idx[t] = ts_idx[t];
-                    cmp_door[di].base_tile_id[t] = base_tile[t];
-                    cmp_door[di].flip_flags[t] = flips[t];
-                }
-            }
+    if (!tiles_xy) return 0;
+    DA_CLEAR(tiles_xy);
+    int tile_count = 0;
+    if (obj->door_tile_count > 0) {
+        DA_RESERVE(tiles_xy, obj->door_tile_count);
+        for (int t = 0; t < obj->door_tile_count; ++t) {
+            DA_APPEND(tiles_xy, ((door_tile_xy_t){ obj->door_tiles[t][0], obj->door_tiles[t][1] }));
         }
     } else {
-        LOGC(LOGCAT_MAIN, LOG_LVL_WARN, "Doors: failed to load TMX for door objects");
+        float ow = (obj->w > 0.0f) ? obj->w : (float)map->tilewidth;
+        float oh = (obj->h > 0.0f) ? obj->h : (float)map->tileheight;
+        float top = obj->y - oh;
+        float left = obj->x;
+        int start_tx = (int)floorf(left / map->tilewidth);
+        int end_tx   = (int)ceilf((left + ow) / map->tilewidth);
+        int start_ty = (int)floorf(top / map->tileheight);
+        int end_ty   = (int)ceilf((top + oh) / map->tileheight);
+        for (int ty = start_ty; ty < end_ty; ++ty) {
+            for (int tx = start_tx; tx < end_tx; ++tx) {
+                DA_APPEND(tiles_xy, ((door_tile_xy_t){ tx, ty }));
+            }
+        }
     }
-    if (have_map) {
-        tiled_free_map(&map);
+    tile_count = (int)tiles_xy->size;
+    return tile_count;
+}
+
+static void resolve_door_tiles(const tiled_map_t* map, cmp_door_t* door)
+{
+    if (!map || !door) return;
+    const uint32_t FLIP_H = 0x80000000;
+    const uint32_t FLIP_V = 0x40000000;
+    const uint32_t FLIP_D = 0x20000000;
+    const uint32_t GID_MASK = 0x1FFFFFFF;
+
+    for (size_t t = 0; t < door->tiles.size; ++t) {
+        int tx = door->tiles.data[t].x;
+        int ty = door->tiles.data[t].y;
+        uint32_t raw_gid = 0;
+        int found_layer = -1;
+        // Prefer the topmost layer that contains a non-empty tile at this location.
+        for (size_t li = map->layer_count; li-- > 0; ) {
+            const tiled_layer_t *layer = &map->layers[li];
+            if (tx < 0 || ty < 0 || tx >= layer->width || ty >= layer->height) continue;
+            uint32_t gid = layer->gids[(size_t)ty * (size_t)layer->width + (size_t)tx];
+            if (gid == 0) continue;
+            raw_gid = gid;
+            found_layer = (int)li;
+            break;
+        }
+        door->tiles.data[t].layer_idx = found_layer;
+        door->tiles.data[t].flip_flags = raw_gid & (FLIP_H | FLIP_V | FLIP_D);
+        uint32_t bare_gid = raw_gid & GID_MASK;
+        int chosen_ts = -1;
+        int local_id = 0;
+        for (size_t si = 0; si < map->tileset_count; ++si) {
+            const tiled_tileset_t *ts = &map->tilesets[si];
+            int local = (int)bare_gid - ts->first_gid;
+            if (local < 0 || local >= ts->tilecount) continue;
+            chosen_ts = (int)si;
+            local_id = local;
+        }
+        door->tiles.data[t].tileset_idx = chosen_ts;
+        door->tiles.data[t].base_tile_id = local_id;
     }
-    return 0;
+}
+
+static void spawn_doors_from_map(const tiled_map_t* map)
+{
+    if (!map) return;
+    door_tile_xy_da_t tiles_xy = {0};
+    for (size_t i = 0; i < map->object_count; ++i) {
+        const tiled_object_t *obj = &map->objects[i];
+        if (!obj->animationtype) continue;
+        if (strcmp(obj->animationtype, "proximity-door") != 0 && strcmp(obj->animationtype, "door") != 0) continue;
+
+        float ow = (obj->w > 0.0f) ? obj->w : (float)map->tilewidth;
+        float oh = (obj->h > 0.0f) ? obj->h : (float)map->tileheight;
+        // Tiled object y is bottom by default for gid objects; place at object center
+        float px = obj->x + ow * 0.5f;
+        float py = obj->y - oh * 0.5f;
+
+        float prox_r = (obj->proximity_radius > 0) ? (float)obj->proximity_radius : 64.0f;
+        float prox_ox = (float)obj->proximity_off_x;
+        float prox_oy = (float)obj->proximity_off_y;
+
+        // Determine which tiles this door covers: prefer explicit door_tiles property, fallback to size
+        DA_CLEAR(&tiles_xy);
+        int tile_count = collect_door_tiles(map, obj, &tiles_xy);
+
+        ecs_entity_t door = ecs_create();
+        cmp_add_position(door, px, py);
+        cmp_add_size(door, ow * 0.5f, oh * 0.5f); // gives CMP_COL for proximity system
+        cmp_add_trigger(door, prox_r, CMP_PLAYER | CMP_COL);
+        cmp_add_door(door,
+                     prox_r,
+                     prox_ox,
+                     prox_oy,
+                     tile_count,
+                     tile_count > 0 ? tiles_xy.data : NULL);
+
+        // store extra tile info directly in cmp_door
+        int di = ent_index_checked(door);
+        if (di >= 0) {
+            resolve_door_tiles(map, &cmp_door[di]);
+        }
+    }
+    DA_FREE(&tiles_xy);
+}
+
+bool init_entities(const char* tmx_path)
+{
+    const tiled_map_t* map = renderer_get_tiled_map();
+    if (!map) {
+        LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "init_entities: no tiled map loaded");
+        return false;
+    }
+
+    prefab_spawn_from_map(map, tmx_path);
+    spawn_doors_from_map(map);
+    return true;
 }
 
 // ===== Game-side component storage =====
@@ -514,8 +426,9 @@ static void sys_doors_present(float dt)
         bool intent_open = door_should_open[i];
 
         // Use first tile's animation (if any) to clamp state transitions
-        int primary_ts = (d->tile_count > 0) ? d->tileset_idx[0] : -1;
-        int primary_base = (d->tile_count > 0) ? d->base_tile_id[0] : -1;
+        size_t tile_count = d->tiles.size;
+        int primary_ts = (tile_count > 0) ? d->tiles.data[0].tileset_idx : -1;
+        int primary_base = (tile_count > 0) ? d->tiles.data[0].base_tile_id : -1;
         const tiled_tileset_t *prim_ts = ts_for_index(map, primary_ts);
         const tiled_animation_t *prim_anim = (prim_ts && prim_ts->anims && primary_base >= 0 && primary_base < prim_ts->tilecount)
             ? &prim_ts->anims[primary_base] : NULL;
@@ -583,21 +496,22 @@ static void sys_doors_present(float dt)
         }
 
         // Apply frames to tiles
-        for (int t = 0; t < d->tile_count; ++t) {
-            int li = d->layer_idx[t];
-            int tsi = d->tileset_idx[t];
-            int base_tile = d->base_tile_id[t];
+        for (size_t t = 0; t < d->tiles.size; ++t) {
+            door_tile_info_t *info = &d->tiles.data[t];
+            int li = info->layer_idx;
+            int tsi = info->tileset_idx;
+            int base_tile = info->base_tile_id;
             if (li < 0 || tsi < 0) continue;
             if ((size_t)li >= map->layer_count || (size_t)tsi >= map->tileset_count) continue;
             tiled_layer_t *layer = &map->layers[li];
             const tiled_tileset_t *ts = ts_for_index(map, tsi);
             if (!ts) continue;
             int frame_tile = door_frame_at(ts, base_tile, t_ms, play_forward);
-            int tx = d->tiles[t].x;
-            int ty = d->tiles[t].y;
+            int tx = info->x;
+            int ty = info->y;
             if (tx < 0 || ty < 0 || tx >= layer->width || ty >= layer->height) continue;
             size_t idx = (size_t)ty * (size_t)layer->width + (size_t)tx;
-            uint32_t gid = (uint32_t)(ts->first_gid + frame_tile) | (d->flip_flags[t] & FLIP_MASK);
+            uint32_t gid = (uint32_t)(ts->first_gid + frame_tile) | (info->flip_flags & FLIP_MASK);
             layer->gids[idx] = gid;
         }
 

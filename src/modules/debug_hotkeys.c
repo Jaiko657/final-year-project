@@ -139,7 +139,7 @@ void sys_debug_binds(const input_t* in)
             }
             if (mask & CMP_DOOR) {
                 LOGC(LOGCAT_ECS, LOG_LVL_INFO,
-                     "  door state=%d tiles=%d", cmp_door[best].state, cmp_door[best].tile_count);
+                     "  door state=%d tiles=%zu", cmp_door[best].state, cmp_door[best].tiles.size);
             }
         } else {
             LOGC(LOGCAT_ECS, LOG_LVL_INFO,

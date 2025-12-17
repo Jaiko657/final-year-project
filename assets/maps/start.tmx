@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="20" height="20" tilewidth="32" tileheight="32" infinite="1" nextlayerid="7" nextobjectid="31">
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="20" height="20" tilewidth="32" tileheight="32" infinite="1" nextlayerid="9" nextobjectid="47">
  <tileset firstgid="1" source="../tilesets/textures.tsx"/>
  <tileset firstgid="852" source="../tilesets/props.tsx"/>
  <layer id="1" name="background" width="20" height="20">
@@ -10,7 +10,7 @@
 0,72,71,72,72,0,72,72,72,0,0,0,0,0,0,0,
 0,72,72,72,72,72,72,72,72,0,0,0,0,0,0,0,
 0,72,72,72,72,72,72,72,72,0,0,0,0,0,0,0,
-0,71,107,70,107,72,72,72,72,0,0,0,0,0,0,0,
+0,71,107,70,107,71,72,72,72,0,0,0,0,0,0,0,
 0,73,74,72,74,73,107,107,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -30,7 +30,7 @@
   </properties>
   <data encoding="csv">
    <chunk x="0" y="0" width="16" height="16">
-3,6,6,6,9,0,0,0,0,0,0,0,0,0,0,0,
+3,6,1236,1237,9,0,0,0,0,0,0,0,0,0,0,0,
 76,0,0,0,84,0,39,6,47,0,0,0,0,0,0,0,
 335,4,1332,8,269,270,40,0,84,0,0,0,0,0,0,0,
 0,76,0,45,0,0,0,0,84,0,0,0,0,0,0,0,
@@ -49,6 +49,44 @@
 </chunk>
   </data>
  </layer>
+ <layer id="7" name="decoration" width="20" height="20">
+  <data encoding="csv">
+   <chunk x="0" y="0" width="16" height="16">
+463,466,0,0,469,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,447,0,453,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,395,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+</chunk>
+  </data>
+ </layer>
+ <objectgroup id="8" name="decoration_objects">
+  <object id="31" gid="889" x="2" y="29" width="32" height="32"/>
+  <object id="33" gid="876" x="64" y="128" width="32" height="32"/>
+  <object id="34" gid="877" x="159" y="195" width="32" height="32"/>
+  <object id="35" gid="852" x="190" y="84" width="32" height="32"/>
+  <object id="36" gid="950" x="209" y="64" width="32" height="32"/>
+  <object id="37" gid="951" x="241" y="64" width="32" height="32"/>
+  <object id="38" gid="910" x="128" y="97" width="32" height="32"/>
+  <object id="39" gid="853" x="120" y="114" width="32" height="32"/>
+  <object id="40" gid="865" x="38" y="102" width="32" height="32"/>
+  <object id="41" gid="866" x="88" y="102" width="32" height="32"/>
+  <object id="42" gid="859" x="161" y="97" width="32" height="32"/>
+  <object id="44" gid="1073742879" x="159" y="202" width="32" height="32"/>
+  <object id="45" gid="880" x="217" y="182" width="32" height="32"/>
+  <object id="46" gid="852" x="220" y="191" width="32" height="32"/>
+ </objectgroup>
  <objectgroup id="6" name="doors">
   <object id="19" gid="1309" x="64" y="96" width="32" height="32">
    <properties>
@@ -65,7 +103,7 @@
    </properties>
   </object>
  </objectgroup>
- <objectgroup id="7" name="entities">
+ <objectgroup id="7" name="entities" visible="0">
   <object id="26" name="spawn" x="72" y="40" width="16" height="16">
    <properties>
     <property name="entityprefab" value="../prefabs/player.ent"/>
