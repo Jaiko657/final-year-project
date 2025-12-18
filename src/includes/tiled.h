@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
-#include "raylib.h"
 #include "asset.h"
 
 typedef struct {
@@ -39,6 +38,7 @@ typedef struct {
     int height;
     uint32_t *gids;   // width*height entries
     bool collision;   // property flag
+    int z_order;      // TMX child index (stacking order)
 } tiled_layer_t;
 
 typedef struct {
@@ -49,7 +49,9 @@ typedef struct {
 
 typedef struct {
     int id;
-    int gid;
+    uint32_t gid;
+    char *layer_name; // owning object layer name
+    int   layer_z;    // TMX child index (stacking order)
     char *name;       // optional
     float x, y, w, h; // pixels
     char *animationtype;   // optional
@@ -83,18 +85,8 @@ typedef struct {
     tex_handle_t *tilesets; // matches map->tilesets ordering
 } tiled_renderer_t;
 
-typedef struct {
-    tex_handle_t tex;
-    Rectangle src;
-    Rectangle dst;
-    float painter_offset;
-} tiled_painter_tile_t;
-
-typedef void (*tiled_painter_emit_fn)(const tiled_painter_tile_t *tile, void *ud);
-
 bool tiled_renderer_init(tiled_renderer_t *r, const tiled_map_t *map);
 void tiled_renderer_shutdown(tiled_renderer_t *r);
-void tiled_renderer_draw(const tiled_map_t *map, const tiled_renderer_t *r, const Rectangle *view, tiled_painter_emit_fn emit_painter, void *emit_ud);
 
 const tiled_property_t* tiled_object_get_property(const tiled_object_t* obj, const char* name);
 const char* tiled_object_get_property_value(const tiled_object_t* obj, const char* name);

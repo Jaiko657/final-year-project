@@ -12,9 +12,11 @@
 #include "../includes/tiled.h"
 #include "../includes/dynarray.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "raylib.h"
 
 typedef struct {
@@ -27,13 +29,19 @@ typedef DA(Item) ItemArray;
 
 typedef struct {
     ItemArray* queue;
-    bool* warned_overflow;
+    int dropped;
 } painter_queue_ctx_t;
 
 static tiled_map_t g_tiled_map;
 static tiled_renderer_t g_tiled_renderer;
 static bool g_tiled_ready = false;
 static ItemArray g_painter_items = {0};
+static const char* DECORATION_LAYER_NAME = "decoration_objects"; // Tiled object layer name for decorative tiles
+
+static const uint32_t FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
+static const uint32_t FLIPPED_VERTICALLY_FLAG   = 0x40000000;
+static const uint32_t FLIPPED_DIAGONALLY_FLAG   = 0x20000000;
+static const uint32_t GID_MASK                  = 0x1FFFFFFF;
 
 void renderer_unload_tiled_map(void)
 {
@@ -89,17 +97,14 @@ static int cmp_item(const void* a, const void* b) {
     return 0;
 }
 
-static bool painter_queue_push(painter_queue_ctx_t* ctx, Item item, const char* warn_msg)
+static bool painter_queue_push(painter_queue_ctx_t* ctx, Item item)
 {
     if (!ctx || !ctx->queue) return false;
     if (ctx->queue->size >= ctx->queue->capacity) {
         DA_GROW(ctx->queue);
     }
     if (ctx->queue->size >= ctx->queue->capacity) {
-        if (ctx->warned_overflow && warn_msg && !*(ctx->warned_overflow)) {
-            LOGC(LOGCAT_REND, LOG_LVL_WARN, "%s", warn_msg);
-            *(ctx->warned_overflow) = true;
-        }
+        ctx->dropped++;
         return false;
     }
     ctx->queue->data[ctx->queue->size++] = item;
@@ -300,24 +305,193 @@ static render_view_t build_camera_view(void){
     return (render_view_t){ cam, view, padded };
 }
 
-static void enqueue_painter_tile(const tiled_painter_tile_t* tile, void* ud)
+static const tiled_tileset_t* tileset_for_gid(const tiled_map_t* map, uint32_t gid, size_t* out_index)
 {
-    if (!tile || !ud) return;
-    painter_queue_ctx_t* ctx = (painter_queue_ctx_t*)ud;
-    if (!ctx || !ctx->queue) return;
+    if (!map) return NULL;
+    const tiled_tileset_t *match = NULL;
+    size_t mi = 0;
+    for (size_t i = 0; i < map->tileset_count; ++i) {
+        const tiled_tileset_t *ts = &map->tilesets[i];
+        int local = (int)gid - ts->first_gid;
+        if (local < 0 || local >= ts->tilecount) continue;
+        match = ts;
+        mi = i;
+    }
+    if (match && out_index) *out_index = mi;
+    return match;
+}
 
-    int idx = (int)ctx->queue->size;
-    ecs_sprite_view_t v = {
-        .tex = tile->tex,
-        .src = rectf_from_rect(tile->src),
-        .x   = tile->dst.x,
-        .y   = tile->dst.y,
-        .ox  = 0.0f,
-        .oy  = 0.0f
-    };
-    float key = tile->dst.y + tile->painter_offset;
-    Item item = { .v = v, .key = key, .seq = idx };
-    painter_queue_push(ctx, item, "painter queue overflow; dropping painter tiles");
+static int animated_tile_index(const tiled_tileset_t *ts, int base_index) {
+    if (!ts || !ts->anims || base_index < 0 || base_index >= ts->tilecount) return base_index;
+    tiled_animation_t *anim = &ts->anims[base_index];
+    if (!anim || anim->frame_count == 0 || anim->total_duration_ms <= 0) return base_index;
+
+    double now_ms = GetTime() * 1000.0;
+    int mod = (int)fmod(now_ms, (double)anim->total_duration_ms);
+    int acc = 0;
+    for (size_t i = 0; i < anim->frame_count; ++i) {
+        acc += anim->frames[i].duration_ms;
+        if (mod < acc) {
+            int idx = anim->frames[i].tile_id;
+            if (idx >= 0 && idx < ts->tilecount) return idx;
+            break;
+        }
+    }
+    return base_index;
+}
+
+static void draw_tile_layer(const tiled_map_t* map,
+                            const tiled_renderer_t* tr,
+                            const tiled_layer_t* layer,
+                            int startX, int startY, int endX, int endY,
+                            painter_queue_ctx_t* painter_ctx)
+{
+    if (!map || !tr || !layer) return;
+    if (!layer->gids || layer->width <= 0 || layer->height <= 0) return;
+    int tw = map->tilewidth;
+    int th = map->tileheight;
+    if (startX < 0) startX = 0;
+    if (startY < 0) startY = 0;
+    if (endX > layer->width) endX = layer->width;
+    if (endY > layer->height) endY = layer->height;
+    if (endX <= startX || endY <= startY) return;
+
+    for (int y = startY; y < endY; ++y) {
+        size_t row_start = (size_t)y * (size_t)layer->width;
+        for (int x = startX; x < endX; ++x) {
+            size_t idx = row_start + (size_t)x;
+            uint32_t raw_gid = layer->gids[idx];
+            if (raw_gid == 0) continue;
+
+            bool flip_h = (raw_gid & FLIPPED_HORIZONTALLY_FLAG) != 0;
+            bool flip_v = (raw_gid & FLIPPED_VERTICALLY_FLAG) != 0;
+            bool flip_d = (raw_gid & FLIPPED_DIAGONALLY_FLAG) != 0;
+            (void)flip_d;
+
+            uint32_t gid = raw_gid & GID_MASK;
+            if (gid == 0) continue;
+
+            size_t ts_idx = 0;
+            const tiled_tileset_t *ts = tileset_for_gid(map, gid, &ts_idx);
+            if (!ts || ts_idx >= tr->texture_count) continue;
+
+            Texture2D tex = asset_backend_resolve_texture_value(tr->tilesets[ts_idx]);
+            if (tex.id == 0) continue;
+
+            int local = (int)gid - ts->first_gid;
+            if (local < 0 || local >= ts->tilecount) continue;
+            int draw_index = animated_tile_index(ts, local);
+            int columns = ts->columns > 0 ? ts->columns : 1;
+
+            int sx = (draw_index % columns) * ts->tilewidth;
+            int sy = (draw_index / columns) * ts->tileheight;
+            Rectangle src = { (float)sx, (float)sy, (float)ts->tilewidth, (float)ts->tileheight };
+            if (flip_h) {
+                src.x += ts->tilewidth;
+                src.width = -src.width;
+            }
+            if (flip_v) {
+                src.y += ts->tileheight;
+                src.height = -src.height;
+            }
+            Rectangle dst = { (float)(x * tw), (float)(y * th), (float)tw, (float)th };
+
+            bool painter_tile = (ts->render_painters && draw_index >= 0 && draw_index < ts->tilecount) ? ts->render_painters[draw_index] : false;
+            float painter_off = (ts->painter_offset && draw_index >= 0 && draw_index < ts->tilecount) ? (float)ts->painter_offset[draw_index] : 0.0f;
+            if (painter_tile && painter_ctx && painter_ctx->queue) {
+                int seq = (int)painter_ctx->queue->size;
+                ecs_sprite_view_t v = {
+                    .tex = tr->tilesets[ts_idx],
+                    .src = rectf_from_rect(src),
+                    .x   = dst.x,
+                    .y   = dst.y,
+                    .ox  = 0.0f,
+                    .oy  = 0.0f
+                };
+                float key = dst.y + painter_off;
+                Item item = { .v = v, .key = key, .seq = seq };
+                painter_queue_push(painter_ctx, item);
+            } else {
+                DrawTexturePro(tex, src, dst, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+            }
+        }
+    }
+}
+
+static size_t draw_decoration_objects_at_z(const tiled_map_t* map,
+                                           const tiled_renderer_t* tr,
+                                           const render_view_t* view,
+                                           painter_queue_ctx_t* painter_ctx,
+                                           size_t obj_start,
+                                           int target_z)
+{
+    if (!map || !tr || !view) return obj_start;
+
+    size_t i = obj_start;
+    for (; i < map->object_count; ++i) {
+        const tiled_object_t* obj = &map->objects[i];
+        if (obj->layer_z != target_z) break;
+        if (!obj->layer_name || strcmp(obj->layer_name, DECORATION_LAYER_NAME) != 0) continue;
+        if (obj->gid == 0) continue;
+
+        uint32_t raw_gid = (uint32_t)obj->gid;
+        bool flip_h = (raw_gid & FLIPPED_HORIZONTALLY_FLAG) != 0;
+        bool flip_v = (raw_gid & FLIPPED_VERTICALLY_FLAG) != 0;
+        bool flip_d = (raw_gid & FLIPPED_DIAGONALLY_FLAG) != 0;
+        (void)flip_d;
+
+        uint32_t gid = raw_gid & GID_MASK;
+        size_t ts_idx = 0;
+        const tiled_tileset_t *ts = tileset_for_gid(map, gid, &ts_idx);
+        if (!ts || ts_idx >= tr->texture_count) continue;
+
+        Texture2D tex = asset_backend_resolve_texture_value(tr->tilesets[ts_idx]);
+        if (tex.id == 0) continue;
+
+        int local = (int)gid - ts->first_gid;
+        if (local < 0 || local >= ts->tilecount) continue;
+        int columns = ts->columns > 0 ? ts->columns : 1;
+
+        int sx = (local % columns) * ts->tilewidth;
+        int sy = (local / columns) * ts->tileheight;
+        Rectangle src = { (float)sx, (float)sy, (float)ts->tilewidth, (float)ts->tileheight };
+        if (flip_h) {
+            src.x += ts->tilewidth;
+            src.width = -src.width;
+        }
+        if (flip_v) {
+            src.y += ts->tileheight;
+            src.height = -src.height;
+        }
+
+        float dst_w = (obj->w > 0.0f) ? obj->w : (float)ts->tilewidth;
+        float dst_h = (obj->h > 0.0f) ? obj->h : (float)ts->tileheight;
+        Rectangle dst = { obj->x, obj->y - dst_h, dst_w, dst_h }; // Tiled object y is bottom
+
+        if (!rects_intersect(dst, view->padded_view)) continue;
+
+        bool painter_tile = (ts->render_painters && ts->render_painters[local]);
+        float painter_off = (ts->painter_offset && local >= 0 && local < ts->tilecount)
+            ? (float)ts->painter_offset[local] : 0.0f;
+
+        if (painter_tile && painter_ctx && painter_ctx->queue) {
+            int idx = (int)painter_ctx->queue->size;
+            ecs_sprite_view_t v = {
+                .tex = tr->tilesets[ts_idx],
+                .src = rectf_from_rect(src),
+                .x   = dst.x,
+                .y   = dst.y,
+                .ox  = 0.0f,
+                .oy  = 0.0f
+            };
+            float key = dst.y + painter_off;
+            Item item = { .v = v, .key = key, .seq = idx };
+            painter_queue_push(painter_ctx, item);
+        } else {
+            DrawTexturePro(tex, src, dst, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+        }
+    }
+    return i;
 }
 
 #if DEBUG_BUILD && DEBUG_TRIGGERS
@@ -361,47 +535,97 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
         return false;
     }
     SetTargetFPS(target_fps >= 0 ? target_fps : 60);
-    SetTraceLogLevel(LOG_DEBUG);   // make Raylib print DEBUG+ //TODO: idk if setting up raylib in renderer ideal, because comes with this responsibility
+#if DEBUG_BUILD
+    SetTraceLogLevel(LOG_DEBUG);   // make Raylib print DEBUG+
+#else
+    SetTraceLogLevel(LOG_WARNING);
+#endif
+    return true;
+}
+
+static bool visible_tile_range(const tiled_map_t* map,
+                               Rectangle padded_view,
+                               int* out_startX, int* out_startY,
+                               int* out_endX, int* out_endY,
+                               int* out_visible_tiles)
+{
+    if (!map || map->tilewidth <= 0 || map->tileheight <= 0) return false;
+    if (map->width <= 0 || map->height <= 0) return false;
+
+    int tw = map->tilewidth;
+    int th = map->tileheight;
+    Rectangle map_rect = {0.0f, 0.0f, (float)(map->width * tw), (float)(map->height * th)};
+    Rectangle vis = intersect_rect(map_rect, padded_view);
+    if (vis.width <= 0.0f || vis.height <= 0.0f) return false;
+
+    int startX = (int)floorf(vis.x / (float)tw);
+    int startY = (int)floorf(vis.y / (float)th);
+    int endX   = (int)ceilf((vis.x + vis.width) / (float)tw);
+    int endY   = (int)ceilf((vis.y + vis.height) / (float)th);
+
+    if (startX < 0) startX = 0;
+    if (startY < 0) startY = 0;
+    if (endX > map->width) endX = map->width;
+    if (endY > map->height) endY = map->height;
+
+    int visible_tiles = (endX - startX) * (endY - startY);
+    if (visible_tiles < 0) visible_tiles = 0;
+
+    if (out_startX) *out_startX = startX;
+    if (out_startY) *out_startY = startY;
+    if (out_endX) *out_endX = endX;
+    if (out_endY) *out_endY = endY;
+    if (out_visible_tiles) *out_visible_tiles = visible_tiles;
     return true;
 }
 
 static void draw_world(const render_view_t* view) {
     // ===== painter’s algorithm queue =====
+    int startX = 0, startY = 0, endX = 0, endY = 0;
+    int visible_tiles = 0;
+    bool has_vis = g_tiled_ready &&
+        visible_tile_range(&g_tiled_map, view->padded_view, &startX, &startY, &endX, &endY, &visible_tiles);
+
     int painter_cap = 0;
-    if (g_tiled_ready) {
-        int tw = g_tiled_map.tilewidth;
-        int th = g_tiled_map.tileheight;
-        if (tw > 0 && th > 0) {
-            Rectangle map_rect = {0.0f, 0.0f, (float)(g_tiled_map.width * tw), (float)(g_tiled_map.height * th)};
-            Rectangle vis = intersect_rect(map_rect, view->padded_view);
-            if (vis.width > 0.0f && vis.height > 0.0f) {
-                int startX = (int)floorf(vis.x / (float)tw);
-                int startY = (int)floorf(vis.y / (float)th);
-                int endX   = (int)ceilf((vis.x + vis.width) / (float)tw);
-                int endY   = (int)ceilf((vis.y + vis.height) / (float)th);
-                if (startX < 0) startX = 0;
-                if (startY < 0) startY = 0;
-                if (endX > g_tiled_map.width) endX = g_tiled_map.width;
-                if (endY > g_tiled_map.height) endY = g_tiled_map.height;
-                int visible_tiles = (endX - startX) * (endY - startY);
-                if (visible_tiles < 0) visible_tiles = 0;
-                int layer_count = (int)g_tiled_map.layer_count;
-                if (layer_count < 1) layer_count = 1;
-                painter_cap = visible_tiles * layer_count;
-            }
-        }
+    if (has_vis) {
+        int layer_count = (int)g_tiled_map.layer_count;
+        if (layer_count < 1) layer_count = 1;
+        painter_cap = visible_tiles * layer_count;
     }
 
     int max_items = ECS_MAX_ENTITIES + painter_cap;
     if (max_items < ECS_MAX_ENTITIES) max_items = ECS_MAX_ENTITIES;
     DA_RESERVE(&g_painter_items, (size_t)max_items);
     DA_CLEAR(&g_painter_items);
-    bool warned_overflow = false;
-    painter_queue_ctx_t painter_ctx = { &g_painter_items, &warned_overflow };
+    painter_queue_ctx_t painter_ctx = { .queue = &g_painter_items, .dropped = 0 };
 
     if (g_tiled_ready) {
         world_sync_tiled_colliders(&g_tiled_map);
-        tiled_renderer_draw(&g_tiled_map, &g_tiled_renderer, &view->padded_view, enqueue_painter_tile, &painter_ctx);
+
+        if (!has_vis) {
+            startX = 0;
+            startY = 0;
+            endX = g_tiled_map.width;
+            endY = g_tiled_map.height;
+        }
+
+        size_t layer_i = 0;
+        size_t obj_i = 0;
+        while (layer_i < g_tiled_map.layer_count || obj_i < g_tiled_map.object_count) {
+            int next_layer_z = (layer_i < g_tiled_map.layer_count) ? g_tiled_map.layers[layer_i].z_order : INT_MAX;
+            int next_obj_z   = (obj_i < g_tiled_map.object_count) ? g_tiled_map.objects[obj_i].layer_z : INT_MAX;
+
+            if (next_obj_z < next_layer_z) {
+                obj_i = draw_decoration_objects_at_z(&g_tiled_map, &g_tiled_renderer, view, &painter_ctx, obj_i, next_obj_z);
+            } else {
+                draw_tile_layer(&g_tiled_map, &g_tiled_renderer, &g_tiled_map.layers[layer_i], startX, startY, endX, endY, &painter_ctx);
+                layer_i++;
+                // render any objects that share this z (unlikely, but preserves ordering)
+                while (obj_i < g_tiled_map.object_count && g_tiled_map.objects[obj_i].layer_z == next_layer_z) {
+                    obj_i = draw_decoration_objects_at_z(&g_tiled_map, &g_tiled_renderer, view, &painter_ctx, obj_i, next_layer_z);
+                }
+            }
+        }
     } else {
         int tileSize = world_tile_size();
         int tilesW = 0, tilesH = 0;
@@ -450,7 +674,11 @@ static void draw_world(const render_view_t* view) {
         // depth: screen-space "feet"
         float feetY = v.y - v.oy + fabsf(v.src.h);
         Item item = { .v = v, .key = feetY, .seq = (int)g_painter_items.size };
-        painter_queue_push(&painter_ctx, item, "painter queue overflow; dropping sprites");
+        painter_queue_push(&painter_ctx, item);
+    }
+
+    if (painter_ctx.dropped > 0) {
+        LOGC(LOGCAT_REND, LOG_LVL_WARN, "painter queue overflow; dropped %d items", painter_ctx.dropped);
     }
     qsort(g_painter_items.data, g_painter_items.size, sizeof(Item), cmp_item);
 
@@ -461,7 +689,7 @@ static void draw_world(const render_view_t* view) {
         if (t.id == 0) continue;
 
         Rectangle src = (Rectangle){ v.src.x, v.src.y, v.src.w, v.src.h };
-        Rectangle dst = (Rectangle){ v.x, v.y, v.src.w, v.src.h };
+        Rectangle dst = (Rectangle){ v.x, v.y, fabsf(v.src.w), fabsf(v.src.h) };
         Vector2   origin = (Vector2){ v.ox, v.oy };
 
         DrawTexturePro(t, src, dst, origin, 0.0f, WHITE);

@@ -857,6 +857,7 @@ static void free_objects(tiled_map_t *map) {
     for (size_t i = 0; i < map->object_count; ++i) {
         tiled_object_t *o = &map->objects[i];
         free(o->name);
+        free(o->layer_name);
         free(o->animationtype);
         if (o->properties) {
             for (size_t p = 0; p < o->property_count; ++p) {
@@ -872,11 +873,17 @@ static void free_objects(tiled_map_t *map) {
     map->object_count = 0;
 }
 
-static void parse_object(struct xml_node *obj_node, tiled_object_t *out) {
+static void parse_object(struct xml_node *obj_node, const char* layer_name, int layer_z, tiled_object_t *out) {
     memset(out, 0, sizeof(*out));
     node_attr_int(obj_node, "id", &out->id);
-    node_attr_int(obj_node, "gid", &out->gid);
+    char* gid_str = node_attr_strdup(obj_node, "gid");
+    if (gid_str) {
+        out->gid = (uint32_t)strtoul(gid_str, NULL, 10);
+        free(gid_str);
+    }
     out->name = node_attr_strdup(obj_node, "name");
+    out->layer_name = layer_name ? xstrdup(layer_name) : NULL;
+    out->layer_z = layer_z;
     char *x = node_attr_strdup(obj_node, "x");
     char *y = node_attr_strdup(obj_node, "y");
     char *w = node_attr_strdup(obj_node, "width");
@@ -1063,8 +1070,10 @@ bool tiled_load_map(const char *tmx_path, tiled_map_t *out_map) {
                 if (!tmp) { ok = false; break; }
                 out_map->objects = tmp;
             }
-            parse_object(obj, &out_map->objects[out_map->object_count]);
+            char *layer_name = node_attr_strdup(child, "name");
+            parse_object(obj, layer_name, (int)i, &out_map->objects[out_map->object_count]);
             out_map->object_count++;
+            free(layer_name);
         }
         if (!ok) break;
     }
@@ -1091,6 +1100,7 @@ bool tiled_load_map(const char *tmx_path, tiled_map_t *out_map) {
             ok = false;
             break;
         }
+        out_map->layers[out_map->layer_count].z_order = (int)i;
         out_map->layer_count++;
     }
 

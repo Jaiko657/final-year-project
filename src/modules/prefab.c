@@ -6,6 +6,7 @@
 #include "xml.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,6 +67,8 @@ static const comp_mask_map_t k_comp_masks[] = {
     #include "../includes/components.def"
 #undef X
 };
+
+static const tiled_map_t* g_prefab_spawn_map = NULL;
 
 static char* pf_xstrdup(const char* s) {
     if (!s) return NULL;
@@ -513,9 +516,10 @@ static v2f object_position_default(const tiled_object_t* obj) {
     if (!obj) return v2f_make(0.0f, 0.0f);
     float x = obj->x;
     float y = obj->y;
+    bool is_tile_obj = obj->gid != 0;
     if (obj->w > 0.0f || obj->h > 0.0f) {
         x += obj->w * 0.5f;
-        y += obj->h * 0.5f;
+        y += is_tile_obj ? -obj->h * 0.5f : obj->h * 0.5f;
     }
     return v2f_make(x, y);
 }
@@ -648,8 +652,14 @@ static void apply_follow_component(const prefab_component_t* comp, const tiled_o
 
 static void apply_col_component(const prefab_component_t* comp, const tiled_object_t* obj, ecs_entity_t e) {
     float hx = 0.0f, hy = 0.0f;
-    parse_float(combined_value(comp, obj, "hx"), &hx);
-    parse_float(combined_value(comp, obj, "hy"), &hy);
+    bool have_hx = parse_float(combined_value(comp, obj, "hx"), &hx);
+    bool have_hy = parse_float(combined_value(comp, obj, "hy"), &hy);
+    if (!have_hx && obj) {
+        hx = (obj->w > 0.0f) ? (obj->w * 0.5f) : 0.0f;
+    }
+    if (!have_hy && obj) {
+        hy = (obj->h > 0.0f) ? (obj->h * 0.5f) : 0.0f;
+    }
     cmp_add_size(e, hx, hy);
 }
 
@@ -671,7 +681,12 @@ static void apply_liftable_component(const prefab_component_t* comp, const tiled
 
 static void apply_trigger_component(const prefab_component_t* comp, const tiled_object_t* obj, ecs_entity_t e) {
     float pad = 0.0f;
-    parse_float(combined_value(comp, obj, "pad"), &pad);
+    bool have_pad = parse_float(combined_value(comp, obj, "pad"), &pad);
+    if (!have_pad && obj) {
+        const char* prox = tiled_object_get_property_value(obj, "proximity_radius");
+        if (!prox) prox = combined_value(comp, obj, "proximity_radius");
+        parse_float(prox, &pad);
+    }
     bool ok = false;
     uint32_t mask = mask_from_string(combined_value(comp, obj, "target_mask"), &ok);
     cmp_add_trigger(e, pad, mask);
@@ -705,6 +720,72 @@ static int parse_door_tiles(const char* s, door_tile_xy_da_t* out_xy) {
     return (int)out_xy->size;
 }
 
+static int collect_door_tiles_from_object(const tiled_map_t* map, const tiled_object_t* obj, door_tile_xy_da_t* tiles_xy) {
+    if (!map || !obj || !tiles_xy) return 0;
+    DA_CLEAR(tiles_xy);
+    int tile_count = 0;
+    if (obj->door_tile_count > 0) {
+        DA_RESERVE(tiles_xy, obj->door_tile_count);
+        for (int t = 0; t < obj->door_tile_count; ++t) {
+            DA_APPEND(tiles_xy, ((door_tile_xy_t){ obj->door_tiles[t][0], obj->door_tiles[t][1] }));
+        }
+    } else {
+        float ow = (obj->w > 0.0f) ? obj->w : (float)map->tilewidth;
+        float oh = (obj->h > 0.0f) ? obj->h : (float)map->tileheight;
+        float top = obj->y - oh;
+        float left = obj->x;
+        int start_tx = (int)floorf(left / map->tilewidth);
+        int end_tx   = (int)ceilf((left + ow) / map->tilewidth);
+        int start_ty = (int)floorf(top / map->tileheight);
+        int end_ty   = (int)ceilf((top + oh) / map->tileheight);
+        for (int ty = start_ty; ty < end_ty; ++ty) {
+            for (int tx = start_tx; tx < end_tx; ++tx) {
+                DA_APPEND(tiles_xy, ((door_tile_xy_t){ tx, ty }));
+            }
+        }
+    }
+    tile_count = (int)tiles_xy->size;
+    return tile_count;
+}
+
+static void resolve_door_tiles(const tiled_map_t* map, cmp_door_t* door) {
+    if (!map || !door) return;
+    const uint32_t FLIP_H = 0x80000000;
+    const uint32_t FLIP_V = 0x40000000;
+    const uint32_t FLIP_D = 0x20000000;
+    const uint32_t GID_MASK = 0x1FFFFFFF;
+
+    for (size_t t = 0; t < door->tiles.size; ++t) {
+        int tx = door->tiles.data[t].x;
+        int ty = door->tiles.data[t].y;
+        uint32_t raw_gid = 0;
+        int found_layer = -1;
+        for (size_t li = map->layer_count; li-- > 0; ) {
+            const tiled_layer_t *layer = &map->layers[li];
+            if (tx < 0 || ty < 0 || tx >= layer->width || ty >= layer->height) continue;
+            uint32_t gid = layer->gids[(size_t)ty * (size_t)layer->width + (size_t)tx];
+            if (gid == 0) continue;
+            raw_gid = gid;
+            found_layer = (int)li;
+            break;
+        }
+        door->tiles.data[t].layer_idx = found_layer;
+        door->tiles.data[t].flip_flags = raw_gid & (FLIP_H | FLIP_V | FLIP_D);
+        uint32_t bare_gid = raw_gid & GID_MASK;
+        int chosen_ts = -1;
+        int local_id = 0;
+        for (size_t si = 0; si < map->tileset_count; ++si) {
+            const tiled_tileset_t *ts = &map->tilesets[si];
+            int local = (int)bare_gid - ts->first_gid;
+            if (local < 0 || local >= ts->tilecount) continue;
+            chosen_ts = (int)si;
+            local_id = local;
+        }
+        door->tiles.data[t].tileset_idx = chosen_ts;
+        door->tiles.data[t].base_tile_id = local_id;
+    }
+}
+
 static void apply_door_component(const prefab_component_t* comp, const tiled_object_t* obj, ecs_entity_t e) {
     float prox_r = 64.0f;
     parse_float(combined_value(comp, obj, "proximity_radius"), &prox_r);
@@ -719,6 +800,14 @@ static void apply_door_component(const prefab_component_t* comp, const tiled_obj
     }
 
     cmp_add_door(e, prox_r, prox_ox, prox_oy, tile_count, tile_count > 0 ? tiles.data : NULL);
+    int idx = ent_index_checked(e);
+    if (idx >= 0 && g_prefab_spawn_map) {
+        if (cmp_door[idx].tiles.size == 0) {
+            collect_door_tiles_from_object(g_prefab_spawn_map, obj, &tiles);
+            cmp_add_door(e, prox_r, prox_ox, prox_oy, (int)tiles.size, tiles.size > 0 ? tiles.data : NULL);
+        }
+        resolve_door_tiles(g_prefab_spawn_map, &cmp_door[idx]);
+    }
     DA_FREE(&tiles);
 }
 
@@ -809,6 +898,8 @@ static char* join_relative_path(const char* base_path, const char* rel) {
 
 size_t prefab_spawn_from_map(const tiled_map_t* map, const char* tmx_path) {
     if (!map) return 0;
+    const tiled_map_t* prev_map = g_prefab_spawn_map;
+    g_prefab_spawn_map = map;
     size_t spawned = 0;
     for (size_t i = 0; i < map->object_count; ++i) {
         const tiled_object_t* obj = &map->objects[i];
@@ -822,5 +913,6 @@ size_t prefab_spawn_from_map(const tiled_map_t* map, const char* tmx_path) {
         int idx = ent_index_checked(e);
         if (idx >= 0) spawned++;
     }
+    g_prefab_spawn_map = prev_map;
     return spawned;
 }
