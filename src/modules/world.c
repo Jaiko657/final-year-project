@@ -377,12 +377,6 @@ static int animated_tile_index_now(const tiled_tileset_t* ts, int base_index) {
 void world_sync_tiled_colliders(const tiled_map_t* map) {
     if (!map || map->width != g_world.w || map->height != g_world.h || !g_world.subtile_masks) return;
 
-    const uint32_t FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
-    const uint32_t FLIPPED_VERTICALLY_FLAG   = 0x40000000;
-    const uint32_t FLIPPED_DIAGONALLY_FLAG   = 0x20000000;
-    const uint32_t GID_MASK                  = 0x1FFFFFFF;
-    (void)FLIPPED_DIAGONALLY_FLAG;
-
     size_t total = (size_t)map->width * (size_t)map->height;
     if (g_world.dynamic_tiles && total > 0) {
         memset(g_world.dynamic_tiles, 0, total * sizeof(bool));
@@ -399,10 +393,10 @@ void world_sync_tiled_colliders(const tiled_map_t* map) {
                 uint32_t raw_gid = layer->gids[idx];
                 if (raw_gid == 0) continue;
 
-                bool flip_h = (raw_gid & FLIPPED_HORIZONTALLY_FLAG) != 0;
-                bool flip_v = (raw_gid & FLIPPED_VERTICALLY_FLAG) != 0;
-                uint32_t gid = raw_gid & GID_MASK;
+                bool flip_h = false, flip_v = false, flip_d = false;
+                uint32_t gid = tiled_gid_strip_flags(raw_gid, &flip_h, &flip_v, &flip_d);
                 if (gid == 0) continue;
+                (void)flip_d;
 
                 size_t ts_idx = 0;
                 int local = 0;

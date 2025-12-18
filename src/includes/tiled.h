@@ -5,6 +5,24 @@
 #include <stddef.h>
 #include "asset.h"
 
+// TMX global tile IDs (GIDs) encode flip flags in the top bits.
+// Ref: https://doc.mapeditor.org/en/stable/reference/tmx-map-format/
+#define TILED_FLIPPED_HORIZONTALLY_FLAG 0x80000000u
+#define TILED_FLIPPED_VERTICALLY_FLAG   0x40000000u
+#define TILED_FLIPPED_DIAGONALLY_FLAG   0x20000000u
+#define TILED_GID_MASK                  0x1FFFFFFFu
+
+static inline uint32_t tiled_gid_strip_flags(uint32_t raw_gid,
+                                             bool* out_flip_h,
+                                             bool* out_flip_v,
+                                             bool* out_flip_d)
+{
+    if (out_flip_h) *out_flip_h = (raw_gid & TILED_FLIPPED_HORIZONTALLY_FLAG) != 0;
+    if (out_flip_v) *out_flip_v = (raw_gid & TILED_FLIPPED_VERTICALLY_FLAG) != 0;
+    if (out_flip_d) *out_flip_d = (raw_gid & TILED_FLIPPED_DIAGONALLY_FLAG) != 0;
+    return raw_gid & TILED_GID_MASK;
+}
+
 typedef struct {
     int tile_id;
     int duration_ms;

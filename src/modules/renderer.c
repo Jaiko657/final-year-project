@@ -36,12 +36,7 @@ static tiled_map_t g_tiled_map;
 static tiled_renderer_t g_tiled_renderer;
 static bool g_tiled_ready = false;
 static ItemArray g_painter_items = {0};
-static const char* DECORATION_LAYER_NAME = "decoration_objects"; // Tiled object layer name for decorative tiles
-
-static const uint32_t FLIPPED_HORIZONTALLY_FLAG = 0x80000000;
-static const uint32_t FLIPPED_VERTICALLY_FLAG   = 0x40000000;
-static const uint32_t FLIPPED_DIAGONALLY_FLAG   = 0x20000000;
-static const uint32_t GID_MASK                  = 0x1FFFFFFF;
+static const char* ENTITY_LAYER_NAME = "entities"; // TMX object layer used to spawn ECS entities (not rendered directly)
 
 void renderer_unload_tiled_map(void)
 {
@@ -363,13 +358,10 @@ static void draw_tile_layer(const tiled_map_t* map,
             uint32_t raw_gid = layer->gids[idx];
             if (raw_gid == 0) continue;
 
-            bool flip_h = (raw_gid & FLIPPED_HORIZONTALLY_FLAG) != 0;
-            bool flip_v = (raw_gid & FLIPPED_VERTICALLY_FLAG) != 0;
-            bool flip_d = (raw_gid & FLIPPED_DIAGONALLY_FLAG) != 0;
-            (void)flip_d;
-
-            uint32_t gid = raw_gid & GID_MASK;
+            bool flip_h = false, flip_v = false, flip_d = false;
+            uint32_t gid = tiled_gid_strip_flags(raw_gid, &flip_h, &flip_v, &flip_d);
             if (gid == 0) continue;
+            (void)flip_d;
 
             size_t ts_idx = 0;
             const tiled_tileset_t *ts = tileset_for_gid(map, gid, &ts_idx);
@@ -387,11 +379,9 @@ static void draw_tile_layer(const tiled_map_t* map,
             int sy = (draw_index / columns) * ts->tileheight;
             Rectangle src = { (float)sx, (float)sy, (float)ts->tilewidth, (float)ts->tileheight };
             if (flip_h) {
-                src.x += ts->tilewidth;
                 src.width = -src.width;
             }
             if (flip_v) {
-                src.y += ts->tileheight;
                 src.height = -src.height;
             }
             Rectangle dst = { (float)(x * tw), (float)(y * th), (float)tw, (float)th };
@@ -418,12 +408,17 @@ static void draw_tile_layer(const tiled_map_t* map,
     }
 }
 
-static size_t draw_decoration_objects_at_z(const tiled_map_t* map,
-                                           const tiled_renderer_t* tr,
-                                           const render_view_t* view,
-                                           painter_queue_ctx_t* painter_ctx,
-                                           size_t obj_start,
-                                           int target_z)
+static bool is_entities_object_layer(const char* layer_name)
+{
+    return layer_name && strcmp(layer_name, ENTITY_LAYER_NAME) == 0;
+}
+
+static size_t draw_object_layer_at_z(const tiled_map_t* map,
+                                     const tiled_renderer_t* tr,
+                                     const render_view_t* view,
+                                     painter_queue_ctx_t* painter_ctx,
+                                     size_t obj_start,
+                                     int target_z)
 {
     if (!map || !tr || !view) return obj_start;
 
@@ -431,19 +426,16 @@ static size_t draw_decoration_objects_at_z(const tiled_map_t* map,
     for (; i < map->object_count; ++i) {
         const tiled_object_t* obj = &map->objects[i];
         if (obj->layer_z != target_z) break;
-        if (!obj->layer_name || strcmp(obj->layer_name, DECORATION_LAYER_NAME) != 0) continue;
+        if (is_entities_object_layer(obj->layer_name)) continue;
         if (obj->gid == 0) continue;
 
         uint32_t raw_gid = (uint32_t)obj->gid;
-        bool flip_h = (raw_gid & FLIPPED_HORIZONTALLY_FLAG) != 0;
-        bool flip_v = (raw_gid & FLIPPED_VERTICALLY_FLAG) != 0;
-        bool flip_d = (raw_gid & FLIPPED_DIAGONALLY_FLAG) != 0;
-        (void)flip_d;
-
-        uint32_t gid = raw_gid & GID_MASK;
+        bool flip_h = false, flip_v = false, flip_d = false;
+        uint32_t gid = tiled_gid_strip_flags(raw_gid, &flip_h, &flip_v, &flip_d);
         size_t ts_idx = 0;
         const tiled_tileset_t *ts = tileset_for_gid(map, gid, &ts_idx);
         if (!ts || ts_idx >= tr->texture_count) continue;
+        (void)flip_d;
 
         Texture2D tex = asset_backend_resolve_texture_value(tr->tilesets[ts_idx]);
         if (tex.id == 0) continue;
@@ -456,11 +448,9 @@ static size_t draw_decoration_objects_at_z(const tiled_map_t* map,
         int sy = (local / columns) * ts->tileheight;
         Rectangle src = { (float)sx, (float)sy, (float)ts->tilewidth, (float)ts->tileheight };
         if (flip_h) {
-            src.x += ts->tilewidth;
             src.width = -src.width;
         }
         if (flip_v) {
-            src.y += ts->tileheight;
             src.height = -src.height;
         }
 
@@ -579,91 +569,54 @@ static bool visible_tile_range(const tiled_map_t* map,
     return true;
 }
 
-static void draw_world(const render_view_t* view) {
-    // ===== painter’s algorithm queue =====
-    int startX = 0, startY = 0, endX = 0, endY = 0;
-    int visible_tiles = 0;
-    bool has_vis = g_tiled_ready &&
-        visible_tile_range(&g_tiled_map, view->padded_view, &startX, &startY, &endX, &endY, &visible_tiles);
+static void sync_collision_from_tmx_if_ready(void)
+{
+    if (!g_tiled_ready) return;
+    world_sync_tiled_colliders(&g_tiled_map);
+}
 
-    int painter_cap = 0;
-    if (has_vis) {
-        int layer_count = (int)g_tiled_map.layer_count;
-        if (layer_count < 1) layer_count = 1;
-        painter_cap = visible_tiles * layer_count;
-    }
+static void draw_world_fallback_tiles(const render_view_t* view)
+{
+    int tileSize = world_tile_size();
+    int tilesW = 0, tilesH = 0;
+    world_size_tiles(&tilesW, &tilesH);
 
-    int max_items = ECS_MAX_ENTITIES + painter_cap;
-    if (max_items < ECS_MAX_ENTITIES) max_items = ECS_MAX_ENTITIES;
-    DA_RESERVE(&g_painter_items, (size_t)max_items);
-    DA_CLEAR(&g_painter_items);
-    painter_queue_ctx_t painter_ctx = { .queue = &g_painter_items, .dropped = 0 };
+    Rectangle worldRect = {0.0f, 0.0f, (float)(tilesW * tileSize), (float)(tilesH * tileSize)};
+    Rectangle visible = intersect_rect(worldRect, view->padded_view);
+    if (visible.width <= 0.0f || visible.height <= 0.0f) return;
 
-    if (g_tiled_ready) {
-        world_sync_tiled_colliders(&g_tiled_map);
+    int startX = (int)floorf(visible.x / tileSize);
+    int startY = (int)floorf(visible.y / tileSize);
+    int endX   = (int)ceilf((visible.x + visible.width) / tileSize);
+    int endY   = (int)ceilf((visible.y + visible.height) / tileSize);
 
-        if (!has_vis) {
-            startX = 0;
-            startY = 0;
-            endX = g_tiled_map.width;
-            endY = g_tiled_map.height;
-        }
+    if (startX < 0) startX = 0;
+    if (startY < 0) startY = 0;
+    if (endX > tilesW) endX = tilesW;
+    if (endY > tilesH) endY = tilesH;
 
-        size_t layer_i = 0;
-        size_t obj_i = 0;
-        while (layer_i < g_tiled_map.layer_count || obj_i < g_tiled_map.object_count) {
-            int next_layer_z = (layer_i < g_tiled_map.layer_count) ? g_tiled_map.layers[layer_i].z_order : INT_MAX;
-            int next_obj_z   = (obj_i < g_tiled_map.object_count) ? g_tiled_map.objects[obj_i].layer_z : INT_MAX;
-
-            if (next_obj_z < next_layer_z) {
-                obj_i = draw_decoration_objects_at_z(&g_tiled_map, &g_tiled_renderer, view, &painter_ctx, obj_i, next_obj_z);
-            } else {
-                draw_tile_layer(&g_tiled_map, &g_tiled_renderer, &g_tiled_map.layers[layer_i], startX, startY, endX, endY, &painter_ctx);
-                layer_i++;
-                // render any objects that share this z (unlikely, but preserves ordering)
-                while (obj_i < g_tiled_map.object_count && g_tiled_map.objects[obj_i].layer_z == next_layer_z) {
-                    obj_i = draw_decoration_objects_at_z(&g_tiled_map, &g_tiled_renderer, view, &painter_ctx, obj_i, next_layer_z);
-                }
-            }
-        }
-    } else {
-        int tileSize = world_tile_size();
-        int tilesW = 0, tilesH = 0;
-        world_size_tiles(&tilesW, &tilesH);
-
-        Rectangle worldRect = {0.0f, 0.0f, (float)(tilesW * tileSize), (float)(tilesH * tileSize)};
-        Rectangle visible = intersect_rect(worldRect, view->padded_view);
-        if (visible.width > 0.0f && visible.height > 0.0f) {
-            int startX = (int)floorf(visible.x / tileSize);
-            int startY = (int)floorf(visible.y / tileSize);
-            int endX   = (int)ceilf((visible.x + visible.width) / tileSize);
-            int endY   = (int)ceilf((visible.y + visible.height) / tileSize);
-
-            if (startX < 0) startX = 0;
-            if (startY < 0) startY = 0;
-            if (endX > tilesW) endX = tilesW;
-            if (endY > tilesH) endY = tilesH;
-
-            for (int ty = startY; ty < endY; ++ty) {
-                for (int tx = startX; tx < endX; ++tx) {
-                    world_tile_t t = world_tile_at(tx, ty);
-                    switch (t) {
-                        case WORLD_TILE_WALKABLE: {
-                            Color c = ((tx + ty) % 2 == 0) ? LIGHTGRAY : DARKGRAY;
-                            DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
-                        } break;
-                        case WORLD_TILE_SOLID: {
-                            Color c = BROWN;
-                            DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
-                        } break;
-                        default:
-                            break;
-                    }
-                }
+    for (int ty = startY; ty < endY; ++ty) {
+        for (int tx = startX; tx < endX; ++tx) {
+            world_tile_t t = world_tile_at(tx, ty);
+            switch (t) {
+                case WORLD_TILE_WALKABLE: {
+                    Color c = ((tx + ty) % 2 == 0) ? LIGHTGRAY : DARKGRAY;
+                    DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
+                } break;
+                case WORLD_TILE_SOLID: {
+                    Color c = BROWN;
+                    DrawRectangle(tx * tileSize, ty * tileSize, tileSize, tileSize, c);
+                } break;
+                default:
+                    break;
             }
         }
     }
+}
 
+static void enqueue_ecs_sprites(const render_view_t* view, painter_queue_ctx_t* painter_ctx)
+{
+    if (!view || !painter_ctx) return;
     for (ecs_sprite_iter_t it = ecs_sprites_begin(); ; ) {
         ecs_sprite_view_t v;
         if (!ecs_sprites_next(&it, &v)) break;
@@ -674,12 +627,17 @@ static void draw_world(const render_view_t* view) {
         // depth: screen-space "feet"
         float feetY = v.y - v.oy + fabsf(v.src.h);
         Item item = { .v = v, .key = feetY, .seq = (int)g_painter_items.size };
-        painter_queue_push(&painter_ctx, item);
+        painter_queue_push(painter_ctx, item);
+    }
+}
+
+static void flush_painter_queue(painter_queue_ctx_t* painter_ctx)
+{
+    if (!painter_ctx) return;
+    if (painter_ctx->dropped > 0) {
+        LOGC(LOGCAT_REND, LOG_LVL_WARN, "painter queue overflow; dropped %d items", painter_ctx->dropped);
     }
 
-    if (painter_ctx.dropped > 0) {
-        LOGC(LOGCAT_REND, LOG_LVL_WARN, "painter queue overflow; dropped %d items", painter_ctx.dropped);
-    }
     qsort(g_painter_items.data, g_painter_items.size, sizeof(Item), cmp_item);
 
     for (size_t i = 0; i < g_painter_items.size; ++i) {
@@ -694,55 +652,131 @@ static void draw_world(const render_view_t* view) {
 
         DrawTexturePro(t, src, dst, origin, 0.0f, WHITE);
     }
+}
 
-#if DEBUG_COLLISION
-    if (g_draw_ecs_colliders || g_draw_phys_colliders || g_draw_static_colliders) {
-        Color ecs_color = RED;
-        Color phys_color = BLUE;
-        Color static_color = WHITE;
+#if DEBUG_BUILD && DEBUG_COLLISION
+static void draw_debug_collision_overlays(const render_view_t* view)
+{
+    if (!g_draw_ecs_colliders && !g_draw_phys_colliders && !g_draw_static_colliders) return;
+    Color ecs_color = RED;
+    Color phys_color = BLUE;
+    Color static_color = WHITE;
 
-        if (g_draw_static_colliders) {
-            draw_static_colliders(view, static_color);
-            draw_dynamic_colliders(view, static_color);
-        }
+    if (g_draw_static_colliders) {
+        draw_static_colliders(view, static_color);
+        draw_dynamic_colliders(view, static_color);
+    }
 
-        if (g_draw_ecs_colliders || g_draw_phys_colliders) {
-            for (ecs_collider_iter_t it = ecs_colliders_begin(); ; ) {
-                ecs_collider_view_t c;
-                if (!ecs_colliders_next(&it, &c)) break;
+    if (g_draw_ecs_colliders || g_draw_phys_colliders) {
+        for (ecs_collider_iter_t it = ecs_colliders_begin(); ; ) {
+            ecs_collider_view_t c;
+            if (!ecs_colliders_next(&it, &c)) break;
 
-                if (g_draw_ecs_colliders) {
-                    Rectangle bounds = collider_bounds_at(c.ecs_x, c.ecs_y, c.hx, c.hy);
-                    draw_collider_outline(bounds, &view->padded_view, ecs_color);
-                }
+            if (g_draw_ecs_colliders) {
+                Rectangle bounds = collider_bounds_at(c.ecs_x, c.ecs_y, c.hx, c.hy);
+                draw_collider_outline(bounds, &view->padded_view, ecs_color);
+            }
 
-                if (g_draw_phys_colliders && c.has_phys) {
-                    Rectangle bounds = collider_bounds_at(c.phys_x, c.phys_y, c.hx, c.hy);
-                    draw_collider_outline(bounds, &view->padded_view, phys_color);
-                }
+            if (g_draw_phys_colliders && c.has_phys) {
+                Rectangle bounds = collider_bounds_at(c.phys_x, c.phys_y, c.hx, c.hy);
+                draw_collider_outline(bounds, &view->padded_view, phys_color);
             }
         }
     }
+}
+#else
+static void draw_debug_collision_overlays(const render_view_t* view) { (void)view; }
 #endif
 
-#if DEBUG_TRIGGERS
-    if (g_draw_triggers) {
-        // ===== trigger debug outlines =====
-        for (ecs_trigger_iter_t it = ecs_triggers_begin(); ; ) {
-            ecs_trigger_view_t c;
-            if (!ecs_triggers_next(&it, &c)) break;
+#if DEBUG_BUILD && DEBUG_TRIGGERS
+static void draw_debug_trigger_overlays(const render_view_t* view)
+{
+    if (!g_draw_triggers) return;
+    for (ecs_trigger_iter_t it = ecs_triggers_begin(); ; ) {
+        ecs_trigger_view_t c;
+        if (!ecs_triggers_next(&it, &c)) break;
 
-            Rectangle bounds = trigger_bounds(&c);
-            if (!rects_intersect(bounds, view->padded_view)) continue;
+        Rectangle bounds = trigger_bounds(&c);
+        if (!rects_intersect(bounds, view->padded_view)) continue;
 
-            int rx = (int)floorf(bounds.x);
-            int ry = (int)floorf(bounds.y);
-            int rw = (int)ceilf(bounds.width);
-            int rh = (int)ceilf(bounds.height);
-            DrawRectangleLines(rx, ry, rw, rh, GREEN);
+        int rx = (int)floorf(bounds.x);
+        int ry = (int)floorf(bounds.y);
+        int rw = (int)ceilf(bounds.width);
+        int rh = (int)ceilf(bounds.height);
+        DrawRectangleLines(rx, ry, rw, rh, GREEN);
+    }
+}
+#else
+static void draw_debug_trigger_overlays(const render_view_t* view) { (void)view; }
+#endif
+
+static void draw_tmx_stack(const render_view_t* view,
+                           int startX, int startY, int endX, int endY,
+                           painter_queue_ctx_t* painter_ctx)
+{
+    if (!view || !painter_ctx) return;
+
+    size_t layer_i = 0;
+    size_t obj_i = 0;
+    while (layer_i < g_tiled_map.layer_count || obj_i < g_tiled_map.object_count) {
+        int next_layer_z = (layer_i < g_tiled_map.layer_count) ? g_tiled_map.layers[layer_i].z_order : INT_MAX;
+        int next_obj_z   = (obj_i < g_tiled_map.object_count) ? g_tiled_map.objects[obj_i].layer_z : INT_MAX;
+
+        if (next_obj_z < next_layer_z) {
+            obj_i = draw_object_layer_at_z(&g_tiled_map, &g_tiled_renderer, view, painter_ctx, obj_i, next_obj_z);
+            continue;
+        }
+
+        int layer_z = g_tiled_map.layers[layer_i].z_order;
+        draw_tile_layer(&g_tiled_map, &g_tiled_renderer, &g_tiled_map.layers[layer_i], startX, startY, endX, endY, painter_ctx);
+        layer_i++;
+
+        // Render any object layers that share this TMX child index.
+        while (obj_i < g_tiled_map.object_count && g_tiled_map.objects[obj_i].layer_z == layer_z) {
+            obj_i = draw_object_layer_at_z(&g_tiled_map, &g_tiled_renderer, view, painter_ctx, obj_i, layer_z);
         }
     }
-#endif
+}
+
+static void draw_world(const render_view_t* view) {
+    int startX = 0, startY = 0, endX = 0, endY = 0;
+    int visible_tiles = 0;
+    bool has_vis = g_tiled_ready &&
+        visible_tile_range(&g_tiled_map, view->padded_view, &startX, &startY, &endX, &endY, &visible_tiles);
+
+    // ===== painter’s algorithm queue =====
+    int painter_cap = 0;
+    if (has_vis) {
+        int layer_count = (int)g_tiled_map.layer_count;
+        if (layer_count < 1) layer_count = 1;
+        painter_cap = visible_tiles * layer_count;
+    }
+
+    int max_items = ECS_MAX_ENTITIES + painter_cap;
+    if (max_items < ECS_MAX_ENTITIES) max_items = ECS_MAX_ENTITIES;
+    DA_RESERVE(&g_painter_items, (size_t)max_items);
+    DA_CLEAR(&g_painter_items);
+    painter_queue_ctx_t painter_ctx = { .queue = &g_painter_items, .dropped = 0 };
+
+    if (g_tiled_ready) {
+        sync_collision_from_tmx_if_ready();
+
+        if (!has_vis) {
+            startX = 0;
+            startY = 0;
+            endX = g_tiled_map.width;
+            endY = g_tiled_map.height;
+        }
+        draw_tmx_stack(view, startX, startY, endX, endY, &painter_ctx);
+    } else {
+        draw_world_fallback_tiles(view);
+    }
+
+    enqueue_ecs_sprites(view, &painter_ctx);
+    flush_painter_queue(&painter_ctx);
+
+    draw_debug_collision_overlays(view);
+    draw_debug_trigger_overlays(view);
 }
 
 static void draw_screen_space_ui(const render_view_t* view) {
@@ -827,19 +861,18 @@ static void draw_screen_space_ui(const render_view_t* view) {
 
 void renderer_next_frame(void) {
     BeginDrawing();
-    ClearBackground((Color){ 51, 60, 87, 255 } );
+        ClearBackground((Color){ 51, 60, 87, 255 } );
 
-    render_view_t view = build_camera_view();
+        render_view_t view = build_camera_view();
+        //in camera rendering mode
+        BeginMode2D(view.cam);
+            draw_world(&view);
+        EndMode2D();
+        //screen space rendering mode
+        draw_screen_space_ui(&view);
 
-    BeginMode2D(view.cam);
-    draw_world(&view);
-    EndMode2D();
-
-    draw_screen_space_ui(&view);
-
-    // Assets GC after drawing
-    asset_collect();
-
+        // Assets GC after drawing
+        asset_collect();
     EndDrawing();
 }
 
