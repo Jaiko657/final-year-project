@@ -43,6 +43,36 @@ static bool g_draw_triggers = false;
 static bool g_show_fps = false;
 #endif
 
+#if !defined(HEADLESS) || !HEADLESS
+static void renderer_try_screenshot(void)
+{
+    if (!IsKeyPressed(KEY_PRINT_SCREEN)) return;
+
+    const char* dir = "screenshots";
+    if (!DirectoryExists(dir)) {
+        if (!MakeDirectory(dir)) {
+            ui_toast(2.0f, "Screenshot failed: can't create '%s'", dir);
+            return;
+        }
+    }
+
+    static int s_next = 0;
+    char path[512];
+    for (int attempt = 0; attempt < 10000; ++attempt) {
+        int idx = s_next + attempt;
+        snprintf(path, sizeof(path), "%s/screenshot_%05d.png", dir, idx);
+        if (FileExists(path)) continue;
+
+        TakeScreenshot(path);
+        s_next = idx + 1;
+        ui_toast(2.0f, "Saved screenshot: %s", path);
+        return;
+    }
+
+    ui_toast(2.0f, "Screenshot failed: no free filename");
+}
+#endif
+
 // ===== public API =====
 bool renderer_init(int width, int height, const char* title, int target_fps) {
     InitWindow(width, height, title ? title : "Game");
@@ -110,6 +140,10 @@ void renderer_next_frame(void) {
         // Assets GC after drawing
         asset_collect();
     EndDrawing();
+
+#if !defined(HEADLESS) || !HEADLESS
+    renderer_try_screenshot();
+#endif
 }
 
 void renderer_shutdown(void) {

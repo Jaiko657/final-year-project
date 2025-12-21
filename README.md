@@ -61,6 +61,7 @@ Build flags:
 - Move: WASD / arrow keys
 - Interact: `E` (buy hat near vendor)
 - Lift/throw: `C`
+- Screenshot: `Print Screen` (saves to `./screenshots/` as `screenshot_#####.png`)
 - Debug build extras:
   - `Space` reloads assets and prints asset debug
   - `1/2/3` toggle collider overlays

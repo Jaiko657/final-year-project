@@ -4,6 +4,7 @@
 *.exe
 *tiled-project
 *tiled-session
+screenshots/
 
 # Ignore the nob binary in the root
 /nob
