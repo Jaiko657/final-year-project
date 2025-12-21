@@ -7,6 +7,8 @@
 
 # Ignore the nob binary in the root
 /nob
+/nob_test
+/nob_test.*
 
 # Ignore everything in the build folder
 /build
@@ -18,4 +20,10 @@
 /include/
 count_lines.sh
 
+# Test build helper
+/tests/nob_tests
 
+# Coverage artifacts (when running tests with --coverage)
+*.gcda
+*.gcno
+*.gcov
