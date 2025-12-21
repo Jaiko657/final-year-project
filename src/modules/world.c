@@ -1,7 +1,7 @@
 #include "../includes/world.h"
 #include "../includes/tiled.h"
 #include "../includes/logger.h"
-#include "raylib.h"
+#include "../includes/time.h"
 
 #include <math.h>
 #include <ctype.h>
@@ -82,15 +82,6 @@ static uint16_t flip_mask_v(uint16_t mask) {
         }
     }
     return out;
-}
-
-static bool str_ieq(const char* a, const char* b) {
-    if (!a || !b) return false;
-    while (*a && *b) {
-        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) return false;
-        ++a; ++b;
-    }
-    return *a == '\0' && *b == '\0';
 }
 
 static bool world_build_from_map(const tiled_map_t* map, const char* collision_layer_name, world_state_t* out_world) {
@@ -180,22 +171,6 @@ static bool world_build_from_map(const tiled_map_t* map, const char* collision_l
         .dynamic_tiles = dynamic,
         .spawn = tile_center_px(map->width / 2, map->height / 2, WORLD_TILE_SIZE),
     };
-
-    bool spawn_found = false;
-    for (size_t i = 0; i < map->object_count; ++i) {
-        const tiled_object_t* obj = &map->objects[i];
-        if (!obj->name || !str_ieq(obj->name, "spawn")) continue;
-        if (obj->w > 0.0f || obj->h > 0.0f) {
-            new_world.spawn = v2f_make(obj->x + obj->w * 0.5f, obj->y + obj->h * 0.5f);
-        } else {
-            new_world.spawn = v2f_make(obj->x, obj->y);
-        }
-        spawn_found = true;
-        break;
-    }
-    if (!spawn_found) {
-        LOGC(LOGCAT_TILE, LOG_LVL_ERROR, "tiled: missing spawn object (using map center)");
-    }
 
     *out_world = new_world;
     return true;
@@ -360,7 +335,7 @@ static int animated_tile_index_now(const tiled_tileset_t* ts, int base_index) {
     tiled_animation_t* anim = &ts->anims[base_index];
     if (!anim || anim->frame_count == 0 || anim->total_duration_ms <= 0) return base_index;
 
-    double now_ms = GetTime() * 1000.0;
+    double now_ms = time_now() * 1000.0;
     int mod = (int)fmod(now_ms, (double)anim->total_duration_ms);
     int acc = 0;
     for (size_t i = 0; i < anim->frame_count; ++i) {

@@ -10,8 +10,8 @@
 
 # Ignore everything in the build folder
 /build
-tiledparsing_tests/build/
-tiledparsing_tests/nob
+.old_scratchpad_code/tiledparsing_tests/build/
+.old_scratchpad_code/tiledparsing_tests/nob
 /.vscode/
 #windows raylib stuff
 /lib/

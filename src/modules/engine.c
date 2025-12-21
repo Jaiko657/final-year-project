@@ -11,8 +11,9 @@
 #include "../includes/camera.h"
 #include "../includes/world.h"
 #include "../includes/world_physics.h"
+#include "../includes/platform.h"
+#include "../includes/time.h"
 
-#include "raylib.h"
 #include <string.h>
 #include <math.h>
 
@@ -76,6 +77,7 @@ static bool reload_world_from_path(const char* tmx_path, bool snap_camera_to_spa
 
 static bool engine_init_subsystems(const char *title)
 {
+    platform_init();
     logger_use_raylib();
     log_set_min_level(LOG_LVL_DEBUG);
 
@@ -137,10 +139,10 @@ int engine_run(void)
     const float FIXED_DT = 1.0f / 60.0f;
     float acc = 0.0f;
 
-    while (!WindowShouldClose()) {
+    while (!platform_should_close()) {
         input_begin_frame();
 
-        float frame = GetFrameTime();
+        float frame = time_frame_dt();
         if (frame > 0.25f) frame = 0.25f;  // avoid spiral of death
         acc += frame;
 
