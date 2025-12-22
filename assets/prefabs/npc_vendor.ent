@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <prefab name="npc_vendor">
-  <component type="VEL" x="0" y="0" dir="south"/>
   <component type="SPR" path="assets/images/npc.png" src="0,0,16,16" ox="8" oy="8"/>
   <component type="VENDOR" sells="hat" price="3"/>
   <component type="COL" hx="6" hy="6"/>

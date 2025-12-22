@@ -1,7 +1,3 @@
-[submodule "third_party/Chipmunk2D"]
-	path = third_party/Chipmunk2D
-	url = https://github.com/slembcke/Chipmunk2D.git
-	ignore = dirty
 [submodule "third_party/xml.c"]
 	path = third_party/xml.c
 	url = https://github.com/ooxi/xml.c.git

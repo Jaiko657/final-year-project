@@ -31,13 +31,13 @@ static render_view_t build_camera_view(void);
 static void draw_world(const render_view_t* view);
 static void draw_screen_space_ui(const render_view_t* view);
 
-static bool visible_tile_range(const tiled_map_t* map,
-                               Rectangle padded_view,
-                               int* out_startX, int* out_startY,
-                               int* out_endX, int* out_endY,
-                               int* out_visible_tiles);
-static void sync_collision_from_tmx_if_ready(void);
-static void draw_tmx_stack(const render_view_t* view,
+	static bool visible_tile_range(const tiled_map_t* map,
+	                               Rectangle padded_view,
+	                               int* out_startX, int* out_startY,
+	                               int* out_endX, int* out_endY,
+	                               int* out_visible_tiles);
+static void draw_tmx_stack(const tiled_map_t* map,
+                           const render_view_t* view,
                            int startX, int startY, int endX, int endY,
                            painter_queue_ctx_t* painter_ctx);
 static void draw_world_fallback_tiles(const render_view_t* view);
@@ -63,9 +63,6 @@ static bool painter_queue_push(painter_queue_ctx_t* ctx, Item item);
 static int cmp_item(const void* a, const void* b);
 
 #if DEBUG_BUILD && DEBUG_COLLISION
-typedef struct cpBB cpBB;
-
-static void draw_bb_cb(const cpBB* bb, void* ud);
 static Rectangle collider_bounds_at(float x, float y, float hx, float hy);
 static void draw_collider_outline(Rectangle bounds, const Rectangle* padded_view, Color color);
 static void draw_static_colliders(const render_view_t* view, Color color);

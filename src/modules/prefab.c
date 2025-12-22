@@ -614,11 +614,9 @@ static void apply_anim_component(const prefab_component_t* comp, const tiled_obj
 
 static void apply_phys_component(const prefab_component_t* comp, const tiled_object_t* obj, ecs_entity_t e) {
     PhysicsType type = parse_phys_type(combined_value(comp, obj, "type"), PHYS_DYNAMIC);
-    float mass = 1.0f, restitution = 0.0f, friction = 0.8f;
+    float mass = 1.0f;
     parse_float(combined_value(comp, obj, "mass"), &mass);
-    parse_float(combined_value(comp, obj, "restitution"), &restitution);
-    parse_float(combined_value(comp, obj, "friction"), &friction);
-    cmp_add_phys_body(e, type, mass, restitution, friction);
+    cmp_add_phys_body(e, type, mass);
 }
 
 static void apply_item_component(const prefab_component_t* comp, const tiled_object_t* obj, ecs_entity_t e) {
@@ -760,6 +758,7 @@ static void resolve_door_tiles(const tiled_map_t* map, cmp_door_t* door) {
         int ty = door->tiles.data[t].y;
         uint32_t raw_gid = 0;
         int found_layer = -1;
+        const char* found_layer_name = NULL;
         for (size_t li = map->layer_count; li-- > 0; ) {
             const tiled_layer_t *layer = &map->layers[li];
             if (tx < 0 || ty < 0 || tx >= layer->width || ty >= layer->height) continue;
@@ -767,9 +766,16 @@ static void resolve_door_tiles(const tiled_map_t* map, cmp_door_t* door) {
             if (gid == 0) continue;
             raw_gid = gid;
             found_layer = (int)li;
+            found_layer_name = layer->name;
             break;
         }
         door->tiles.data[t].layer_idx = found_layer;
+        if (found_layer_name) {
+            strncpy(door->tiles.data[t].layer_name, found_layer_name, sizeof(door->tiles.data[t].layer_name) - 1);
+            door->tiles.data[t].layer_name[sizeof(door->tiles.data[t].layer_name) - 1] = '\0';
+        } else {
+            door->tiles.data[t].layer_name[0] = '\0';
+        }
         door->tiles.data[t].flip_flags = raw_gid & (FLIP_H | FLIP_V | FLIP_D);
         uint32_t bare_gid = raw_gid & GID_MASK;
         int chosen_ts = -1;

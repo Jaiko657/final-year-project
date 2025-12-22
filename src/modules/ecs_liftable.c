@@ -1,7 +1,6 @@
 #include "../includes/ecs_internal.h"
 #include "../includes/input.h"
 #include "../includes/world.h"
-#include <chipmunk/chipmunk.h>
 #include <float.h>
 #include <math.h>
 
@@ -33,42 +32,11 @@ static void liftable_move_entity(int idx, float x, float y)
 {
     if (idx < 0 || idx >= ECS_MAX_ENTITIES) return;
     cmp_pos[idx] = (cmp_position_t){ x, y };
-    if ((ecs_mask[idx] & CMP_PHYS_BODY) && cmp_phys_body[idx].cp_body) {
-        cpBodySetPosition(cmp_phys_body[idx].cp_body, cpv(x, y));
-        cpBodySetVelocity(cmp_phys_body[idx].cp_body, cpv(0.0f, 0.0f));
-    }
-}
-
-static cpBodyType desired_rest_type(const cmp_phys_body_t* pb)
-{
-    if (!pb) return CP_BODY_TYPE_DYNAMIC;
-    switch (pb->type) {
-        case PHYS_KINEMATIC: return CP_BODY_TYPE_KINEMATIC;
-        case PHYS_STATIC:    return CP_BODY_TYPE_STATIC;
-        case PHYS_DYNAMIC:
-        default:             return CP_BODY_TYPE_DYNAMIC;
-    }
 }
 
 static void liftable_set_state(int idx, liftable_state_t new_state)
 {
     cmp_liftable_t* l = &cmp_liftable[idx];
-    if ((ecs_mask[idx] & CMP_PHYS_BODY) && cmp_phys_body[idx].cp_body) {
-        cmp_phys_body_t* pb = &cmp_phys_body[idx];
-        bool airborne = (new_state != LIFTABLE_STATE_ONGROUND);
-        cpBodyType target = airborne ? CP_BODY_TYPE_KINEMATIC : desired_rest_type(pb);
-        cpBodySetType(pb->cp_body, target);
-        if (airborne) {
-            cpBodySetVelocity(pb->cp_body, cpv(0.0f, 0.0f));
-        } else if (pb->type == PHYS_DYNAMIC) {
-            cpBodySetMass(pb->cp_body, pb->mass);
-            cpBodySetMoment(pb->cp_body, INFINITY);
-        }
-    }
-    if ((ecs_mask[idx] & CMP_PHYS_BODY) && cmp_phys_body[idx].cp_shape) {
-        bool disable_collisions = (new_state != LIFTABLE_STATE_ONGROUND);
-        cpShapeSetSensor(cmp_phys_body[idx].cp_shape, disable_collisions ? cpTrue : cpFalse);
-    }
 
     if (new_state == LIFTABLE_STATE_ONGROUND) {
         l->carrier = ecs_null();

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prefab name="recycler">
+  <component type="RECYCLER"/>
+  <component type="COL" hx="5" hy="5"/>
+  <component type="TRIGGER" pad="1" target_mask="PLASTIC|COL"/>
+</prefab>

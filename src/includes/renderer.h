@@ -2,16 +2,12 @@
 #include <stdbool.h>
 #include "build_config.h"
 
-#include "tiled.h"
-
 // Creates the window and sets target fps.
 bool renderer_init(int width, int height, const char* title, int target_fps);
-bool renderer_load_tiled_map(const char* tmx_path);
+bool renderer_bind_world_map(void);
 void renderer_unload_tiled_map(void);
 void renderer_next_frame(void);
 void renderer_shutdown(void);
-
-tiled_map_t* renderer_get_tiled_map(void);
 
 #if DEBUG_BUILD
 bool renderer_toggle_ecs_colliders(void);

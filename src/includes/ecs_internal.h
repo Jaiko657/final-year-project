@@ -75,6 +75,7 @@ typedef struct {
 typedef struct {
     int x, y;
     int layer_idx;
+    char layer_name[64];
     int tileset_idx;
     int base_tile_id;
     uint32_t flip_flags;
@@ -90,6 +91,7 @@ typedef struct {
     int current_frame;
     float anim_time_ms;
     bool intent_open;
+    uint32_t resolved_map_gen;
     enum { DOOR_CLOSED = 0, DOOR_OPENING, DOOR_OPEN, DOOR_CLOSING } state;
 } cmp_door_t;
 

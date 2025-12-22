@@ -1,5 +1,5 @@
 #pragma once
-#include <chipmunk/chipmunk.h>
+#include <stdbool.h>
 
 typedef enum {
     PHYS_NONE = 0,
@@ -12,16 +12,14 @@ typedef struct {
     PhysicsType type;
     float mass;
     float inv_mass;
-    float restitution;
-    float friction;
 
-    // Collision filtering (defaults to 0 == Chipmunk defaults)
+    // Collision filtering (0 means "default"/allow-all).
     unsigned int category_bits;
     unsigned int mask_bits;
 
-    // Chipmunk runtime handles
-    cpBody*  cp_body;
-    cpShape* cp_shape;
+    // Runtime flag: becomes true once the entity has the required components (POS+COL+PHYS_BODY)
+    // and is participating in the physics-lite step.
+    bool created;
 } cmp_phys_body_t;
 
 // Internal helpers (component indices)

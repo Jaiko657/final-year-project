@@ -33,9 +33,9 @@ typedef struct {
 
 typedef struct {
     float ecs_x, ecs_y;   // ECS transform center
-    float phys_x, phys_y; // Chipmunk body center (falls back to ECS if none)
+    float phys_x, phys_y; // Physics body center (falls back to ECS if none)
     float hx, hy;         // half extents
-    bool  has_phys;       // true if Chipmunk body is valid
+    bool  has_phys;       // true if physics body is active
 } ecs_collider_view_t;
 
 typedef struct {
@@ -131,7 +131,7 @@ void cmp_add_trigger  (ecs_entity_t e, float pad, uint32_t target_mask);
 void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state);
 void cmp_add_size     (ecs_entity_t e, float hx, float hy); // AABB half-extents
 void cmp_add_liftable (ecs_entity_t e);
-void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float restitution, float friction);
+void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass);
 void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type);
 void cmp_add_door(ecs_entity_t e, float prox_radius, float prox_off_x, float prox_off_y, int tile_count, const door_tile_xy_t* tile_xy);
 

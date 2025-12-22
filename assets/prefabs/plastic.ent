@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prefab name="plastic">
+  <component type="SPR" path="assets/images/plastic.png" src="0,0,23,19" ox="11.5" oy="9.5"/>
+  <component type="PLASTIC"/>
+  <component type="VEL" x="0" y="0" dir="south"/>
+  <component type="COL" hx="8" hy="8"/>
+  <component type="PHYS_BODY">
+    <property name="type" value="dynamic"/>
+    <property name="mass" value="3.0"/>
+    <property name="restitution" value="0.2"/>
+    <property name="friction" value="1.5"/>
+  </component>
+  <component type="LIFTABLE" throw_speed="160"/>
+</prefab>

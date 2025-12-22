@@ -312,15 +312,14 @@ int main(int argc, char **argv)
     const char *cc = getenv("CC");
     if (!cc || cc[0] == '\0') cc = "cc";
 
-    const char *includes =
-        "-I third_party/Unity/src "
-        "-I src/includes "
-        "-I third_party/xml.c/src "
-        "-I third_party/Chipmunk2D/include "
-        "-I tests/stubs";
+	    const char *includes =
+	        "-I third_party/Unity/src "
+	        "-I src/includes "
+	        "-I third_party/xml.c/src "
+	        "-I tests/stubs";
     const char *cflags = coverage
-        ? "-std=c99 -Wall -Wextra -O0 -g --coverage"
-        : "-std=c99 -Wall -Wextra -O0 -g";
+        ? "-std=c99 -Wall -Wextra -O0 -g --coverage -DUNIT_TEST=1"
+        : "-std=c99 -Wall -Wextra -O0 -g -DUNIT_TEST=1";
 
     // Compile all sources to objects (keeps coverage artifacts in build/obj/unit).
     Nob_File_Paths all_sources = {0};
@@ -347,7 +346,7 @@ int main(int argc, char **argv)
         Nob_String_Builder link = {0};
         nob_sb_appendf(&link, "%s %s ", cc, cflags);
         sb_append_paths(&link, &objs);
-        nob_sb_append_cstr(&link, "-o build/unit_tests");
+        nob_sb_append_cstr(&link, "-o build/unit_tests -lm");
         nob_sb_append_null(&link);
         nob_cmd_append(&cmd, "sh", "-lc", link.items);
         if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;

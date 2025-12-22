@@ -1,6 +1,6 @@
 # final-year-project
 
-Final year project: a small 2D tile-based game built on a custom C99 engine (ECS + Chipmunk2D physics) with Raylib used as the platform/renderer backend.
+Final year project: a small 2D tile-based game built on a custom C99 engine (ECS + custom 2D collision/physics-lite) with Raylib used as the platform/renderer backend.
 
 ## Quick start (Linux)
 
@@ -26,7 +26,6 @@ sudo apt install build-essential cmake git \
 
 This initializes `git` submodules, applies local patches, and builds:
 - `third_party/raylib` (static library)
-- `third_party/Chipmunk2D`
 - `third_party/xml.c`
 
 ### Build + run
@@ -82,7 +81,7 @@ Content is authored in Tiled (`assets/maps/*.tmx`) and entity prefabs (`assets/p
 
 - Fixed timestep simulation (60Hz) with variable render framerate.
 - ECS with SoA component storage and phase-based system scheduling (`PHASE_INPUT`, `PHASE_PHYSICS`, `PHASE_SIM_*`, `PHASE_PRESENT`).
-- 2D physics via Chipmunk2D (bodies in Chipmunk, transforms synced back into ECS).
+- Collision/physics-lite: kinematic intent velocities + tile collision and simple entity pushing.
 - Tile/world pipeline:
   - TMX parsing + tilesets via a small XML loader (`xml.c`) and a custom Tiled module.
   - Collision built from per-tile 4x4 subtile bitmasks; static colliders merged, with “dynamic” tiles (e.g. doors) kept separate.
@@ -99,5 +98,4 @@ In practice, “runs anywhere with a C compiler” means:
 ## Third-party
 
 - Raylib (rendering/window/input)
-- Chipmunk2D (physics)
 - xml.c (TMX parsing helper)

@@ -10,7 +10,6 @@
 #include "../includes/renderer.h"
 #include "../includes/camera.h"
 #include "../includes/world.h"
-#include "../includes/world_physics.h"
 #include "../includes/platform.h"
 #include "../includes/time.h"
 
@@ -57,19 +56,17 @@ static bool reload_world_from_path(const char* tmx_path, bool snap_camera_to_spa
         return false;
     }
 
-    if (!renderer_load_tiled_map(tmx_path)) {
+    if (!renderer_bind_world_map()) {
         LOGC(LOGCAT_MAIN, LOG_LVL_ERROR, "Failed to load TMX map '%s' for renderer, reverting", tmx_path);
         if (strcmp(previous_path, tmx_path) != 0) {
             if (!world_load_from_tmx(previous_path, "walls")) {
                 LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to revert world to previous TMX '%s'", previous_path);
             }
         }
-        world_physics_rebuild_static();
         sync_camera_to_world(true);
         return false;
     }
 
-    world_physics_rebuild_static();
     sync_camera_to_world(snap_camera_to_spawn);
     remember_tmx_path(tmx_path);
     return true;
@@ -91,7 +88,6 @@ static bool engine_init_subsystems(const char *title)
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to load world collision");
         return false;
     }
-    world_physics_init();
     camera_init();
 
     if (!renderer_init(1280, 720, title, 0)) {
@@ -99,7 +95,7 @@ static bool engine_init_subsystems(const char *title)
         return false;
     }
 
-    if (!renderer_load_tiled_map(g_current_tmx_path)) {
+    if (!renderer_bind_world_map()) {
         LOGC(LOGCAT_MAIN, LOG_LVL_FATAL, "Failed to load TMX map");
         return false;
     }
@@ -165,7 +161,6 @@ int engine_run(void)
 void engine_shutdown(void)
 {
     ecs_phys_destroy_all();
-    world_physics_shutdown();
     ecs_shutdown();
     asset_shutdown();
     renderer_shutdown();

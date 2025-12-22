@@ -5,18 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define CHIPMUNK_INCLUDE_DIR   "third_party/Chipmunk2D/include"
-
 #define RAYLIB_INCLUDE_DIR     "third_party/raylib/src"
 
 #define XML_INCLUDE_DIR        "third_party/xml.c/src"
-
-#if defined(_WIN32)
-    #define CHIPMUNK_LIB_DIR   "third_party/Chipmunk2D/build"
-#else
-    #define CHIPMUNK_LIB_DIR   "third_party/Chipmunk2D/build/src"
-    #define CHIPMUNK_LIB_NAME  "libchipmunk.so.7.0.3"
-#endif
 
 #define XML_LIB_DIR            "third_party/xml.c/build"
 #define XML_LIB_NAME           "libxml.a"
@@ -129,19 +120,14 @@ int main(int argc, char **argv) {
     Nob_Cmd cmd = {0};
 
 #if !defined(_WIN32)
-    const char *debug_flags = debug_build
-        ? "-DDEBUG_BUILD=1 -DDEBUG_COLLISION=1 -DDEBUG_TRIGGERS=1 -DDEBUG_FPS=1 -g"
-        : "-DDEBUG_BUILD=0 -DDEBUG_COLLISION=0 -DDEBUG_TRIGGERS=0 -DDEBUG_FPS=0 -DNDEBUG";
+	    const char *debug_flags = debug_build
+	        ? "-DDEBUG_BUILD=1 -DDEBUG_COLLISION=1 -DDEBUG_TRIGGERS=1 -DDEBUG_FPS=1 -g"
+	        : "-DDEBUG_BUILD=0 -DDEBUG_COLLISION=0 -DDEBUG_TRIGGERS=0 -DDEBUG_FPS=0 -DNDEBUG";
 
-    const char *chipmunk_lib_dir = CHIPMUNK_LIB_DIR;
-    const char *chipmunk_lib_name = CHIPMUNK_LIB_NAME;
-    const char *chipmunk_lib_file = nob_temp_sprintf("%s/%s", chipmunk_lib_dir, chipmunk_lib_name);
-    nob_log(NOB_INFO, "Linking against %s", chipmunk_lib_file);
-    const char *xml_lib_dir = XML_LIB_DIR;
-    const char *xml_lib_name = XML_LIB_NAME;
-    const char *xml_lib_file = nob_temp_sprintf("%s/%s", xml_lib_dir, xml_lib_name);
-    nob_log(NOB_INFO, "Linking against %s", xml_lib_file);
-    const char *chipmunk_rpath = nob_temp_sprintf("$ORIGIN/../%s", chipmunk_lib_dir);
+	    const char *xml_lib_dir = XML_LIB_DIR;
+	    const char *xml_lib_name = XML_LIB_NAME;
+	    const char *xml_lib_file = nob_temp_sprintf("%s/%s", xml_lib_dir, xml_lib_name);
+	    nob_log(NOB_INFO, "Linking against %s", xml_lib_file);
 #endif
 
 #if !defined(_WIN32)
@@ -152,30 +138,24 @@ int main(int argc, char **argv) {
 	        if (!gather_headless_sources(&headless_sources, &replacement_bases)) return 1;
 	        if (!gather_module_sources(&module_sources, &replacement_bases)) return 1;
 
-	        Nob_String_Builder sb = {0};
-	        nob_sb_appendf(&sb,
-	            "gcc -std=c99 -Wall -Wextra -fno-fast-math -fno-finite-math-only "
-	            "%s -DHEADLESS=1 "
-	            "-I %s -I %s "
-	            "src/main.c ",
-	            debug_flags,
-	            CHIPMUNK_INCLUDE_DIR,
-	            XML_INCLUDE_DIR
-	        );
+		        Nob_String_Builder sb = {0};
+		        nob_sb_appendf(&sb,
+		            "gcc -std=c99 -Wall -Wextra -fno-fast-math -fno-finite-math-only "
+		            "%s -DHEADLESS=1 "
+		            "-I %s "
+		            "src/main.c ",
+		            debug_flags,
+		            XML_INCLUDE_DIR
+		        );
 	        sb_append_paths(&sb, &module_sources);
 	        sb_append_paths(&sb, &headless_sources);
-	        nob_sb_appendf(&sb,
-	            "-o build/game_headless "
-	            "-L %s -l:%s "
-	            "-L %s -l:%s "
-	            "-Wl,-rpath,'%s' "
-	            "-lm -lpthread -ldl -lrt",
-	            chipmunk_lib_dir,
-	            chipmunk_lib_name,
-	            xml_lib_dir,
-	            xml_lib_name,
-	            chipmunk_rpath
-	        );
+		        nob_sb_appendf(&sb,
+		            "-o build/game_headless "
+		            "-L %s -l:%s "
+		            "-lm -lpthread -ldl -lrt",
+		            xml_lib_dir,
+		            xml_lib_name
+		        );
 	        nob_sb_append_null(&sb);
 	        char *cmdline = sb.items;
 	        nob_cmd_append(&cmd, "sh", "-lc", cmdline);
@@ -218,61 +198,53 @@ int main(int argc, char **argv) {
     nob_log(NOB_INFO, "Linking against %s", raylib_lib_file);
 
 #ifdef _WIN32
-    nob_cmd_append(&cmd, "gcc",
-        "-std=c99", "-Wall", "-Wextra",
-        "-fno-fast-math", "-fno-finite-math-only",
-        debug_build ? "-DDEBUG_BUILD=1" : "-DDEBUG_BUILD=0",
+	    nob_cmd_append(&cmd, "gcc",
+	        "-std=c99", "-Wall", "-Wextra",
+	        "-fno-fast-math", "-fno-finite-math-only",
+	        debug_build ? "-DDEBUG_BUILD=1" : "-DDEBUG_BUILD=0",
         debug_build ? "-DDEBUG_COLLISION=1" : "-DDEBUG_COLLISION=0",
         debug_build ? "-DDEBUG_TRIGGERS=1" : "-DDEBUG_TRIGGERS=0",
         debug_build ? "-DDEBUG_FPS=1" : "-DDEBUG_FPS=0",
-        debug_build ? "-g" : "-DNDEBUG",
-        "-I", "include",
-        "-I", raylib_include_dir,
-        "-I", CHIPMUNK_INCLUDE_DIR,
-        "-I", XML_INCLUDE_DIR,
-        "src/main.c",
-        "src/modules/*.c",
-        "-o", "build/game.exe",
-        "-L", "lib",
-        "-L", CHIPMUNK_LIB_DIR,
-        "-L", XML_LIB_DIR,
-        raylib_lib_file,
-        "-lchipmunk", "-l:libxml.a",
-        "-lopengl32", "-lgdi32", "-lwinmm"
-    );
+	        debug_build ? "-g" : "-DNDEBUG",
+	        "-I", "include",
+	        "-I", raylib_include_dir,
+	        "-I", XML_INCLUDE_DIR,
+	        "src/main.c",
+	        "src/modules/*.c",
+	        "-o", "build/game.exe",
+	        "-L", "lib",
+	        "-L", XML_LIB_DIR,
+	        raylib_lib_file,
+	        "-l:libxml.a",
+	        "-lopengl32", "-lgdi32", "-lwinmm"
+	    );
 #else
 	    Nob_File_Paths module_sources = {0};
 	    if (!gather_module_sources(&module_sources, NULL)) return 1;
 
-	    Nob_String_Builder sb = {0};
-	    nob_sb_appendf(&sb,
-	        "gcc -std=c99 -Wall -Wextra -fno-fast-math -fno-finite-math-only "
-	        "%s "
-	        "-I %s -I %s -I %s "
-	        "src/main.c ",
-	        debug_flags,
-	        raylib_include_dir,
-	        CHIPMUNK_INCLUDE_DIR,
-	        XML_INCLUDE_DIR
-	    );
-	    sb_append_paths(&sb, &module_sources);
-	    nob_sb_appendf(&sb,
-	        "-o build/game "
-	        "%s "
-	        "-L %s -l:%s "
-	        "-L %s -l:%s "
-	        "-Wl,-rpath,'%s' "
-	        "-lGL -lm -lpthread -ldl -lrt -lX11",
-	        raylib_lib_file,
-	        chipmunk_lib_dir,
-	        chipmunk_lib_name,
-	        xml_lib_dir,
-	        xml_lib_name,
-	        chipmunk_rpath
-	    );
-	    nob_sb_append_null(&sb);
-	    char *cmdline = sb.items;
-	    nob_cmd_append(&cmd, "sh", "-lc", cmdline);
+		    Nob_String_Builder sb = {0};
+		    nob_sb_appendf(&sb,
+		        "gcc -std=c99 -Wall -Wextra -fno-fast-math -fno-finite-math-only "
+		        "%s "
+		        "-I %s -I %s "
+		        "src/main.c ",
+		        debug_flags,
+		        raylib_include_dir,
+		        XML_INCLUDE_DIR
+		    );
+		    sb_append_paths(&sb, &module_sources);
+		    nob_sb_appendf(&sb,
+		        "-o build/game "
+		        "%s "
+		        "-L %s -l:%s "
+		        "-lGL -lm -lpthread -ldl -lrt -lX11",
+		        raylib_lib_file,
+		        xml_lib_dir,
+		        xml_lib_name
+		    );
+		    nob_sb_append_null(&sb);
+		    char *cmdline = sb.items;
+		    nob_cmd_append(&cmd, "sh", "-lc", cmdline);
 #endif
 
 	    if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;

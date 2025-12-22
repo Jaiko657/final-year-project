@@ -1,7 +1,6 @@
 #include "../includes/ecs_internal.h"
 #include "../includes/logger.h"
 #include "../includes/world.h"
-#include "../includes/world_physics.h"
 #include "../includes/renderer.h"
 #include "../includes/dynarray.h"
 #include <math.h>
@@ -29,8 +28,6 @@ static int free_top = 0;
 
 // Config
 static const float PHYS_DEFAULT_MASS        = 1.0f;
-static const float PHYS_DEFAULT_RESTITUTION = 0.0f;
-static const float PHYS_DEFAULT_FRICTION    = 0.8f;
 static const float LIFTABLE_DEFAULT_CARRY_HEIGHT      = 18.0f;
 static const float LIFTABLE_DEFAULT_CARRY_DISTANCE    = 12.0f;
 static const float LIFTABLE_DEFAULT_PICKUP_DISTANCE   = 18.0f;
@@ -63,9 +60,6 @@ float clampf(float v, float a, float b){
 
 static void set_position_sync_body(int i, float x, float y){
     cmp_pos[i] = (cmp_position_t){ x, y };
-    if ((ecs_mask[i] & CMP_PHYS_BODY) && cmp_phys_body[i].cp_body) {
-        cpBodySetPosition(cmp_phys_body[i].cp_body, cpv(x, y));
-    }
 }
 
 ecs_entity_t find_player_handle(void){
@@ -88,7 +82,7 @@ static void cmp_sprite_release_idx(int i){
 static void try_create_phys_body(int i){
     const uint32_t req = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
     if ((ecs_mask[i] & req) != req) return;
-    if (cmp_phys_body[i].cp_body || cmp_phys_body[i].cp_shape) return;
+    if (cmp_phys_body[i].created) return;
     ecs_phys_body_create_for_entity(i);
 }
 
@@ -96,7 +90,7 @@ static void resolve_tile_penetration(int i)
 {
     const uint32_t req = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
     if ((ecs_mask[i] & req) != req) return;
-    if (!cmp_phys_body[i].cp_body) return;
+    if (!cmp_phys_body[i].created) return;
     if ((ecs_mask[i] & CMP_LIFTABLE) && cmp_liftable[i].state != LIFTABLE_STATE_ONGROUND) return;
 
     int tiles_w = 0, tiles_h = 0;
@@ -234,8 +228,7 @@ void ecs_destroy(ecs_entity_t e)
     cmp_sprite_release_idx(idx);
     if (ecs_mask[idx] & CMP_PHYS_BODY) {
         ecs_phys_body_destroy_for_entity(idx);
-        cmp_phys_body[idx].cp_body = NULL;
-        cmp_phys_body[idx].cp_shape = NULL;
+        cmp_phys_body[idx].created = false;
     }
     if (ecs_mask[idx] & CMP_DOOR) {
         DA_FREE(&cmp_door[idx].tiles);
@@ -375,7 +368,7 @@ void cmp_add_liftable(ecs_entity_t e)
     ecs_mask[i] |= CMP_LIFTABLE;
 }
 
-void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float restitution, float friction)
+void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass)
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
@@ -385,10 +378,7 @@ void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float resti
         .type = type,
         .mass = mass,
         .inv_mass = inv_mass,
-        .restitution = restitution,
-        .friction = friction,
-        .cp_body = NULL,
-        .cp_shape = NULL
+        .created = false
     };
     ecs_mask[i] |= CMP_PHYS_BODY;
     try_create_phys_body(i);
@@ -396,7 +386,7 @@ void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass, float resti
 
 void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type)
 {
-    cmp_add_phys_body(e, type, PHYS_DEFAULT_MASS, PHYS_DEFAULT_RESTITUTION, PHYS_DEFAULT_FRICTION);
+    cmp_add_phys_body(e, type, PHYS_DEFAULT_MASS);
 }
 
 void cmp_add_door(ecs_entity_t e, float prox_radius, float prox_off_x, float prox_off_y, int tile_count, const door_tile_xy_t* tile_xy)
@@ -416,6 +406,7 @@ void cmp_add_door(ecs_entity_t e, float prox_radius, float prox_off_x, float pro
                 .x = tile_xy[t].x,
                 .y = tile_xy[t].y,
                 .layer_idx = -1,
+                .layer_name = {0},
                 .tileset_idx = -1,
                 .base_tile_id = 0,
                 .flip_flags = 0
@@ -427,6 +418,7 @@ void cmp_add_door(ecs_entity_t e, float prox_radius, float prox_off_x, float pro
     d->current_frame = 0;
     d->anim_time_ms = 0.0f;
     d->intent_open = false;
+    d->resolved_map_gen = 0;
     ecs_mask[i] |= CMP_DOOR;
 }
 
@@ -627,19 +619,24 @@ static void sys_follow(float dt)
 
 static void sys_physics_integrate_impl(float dt)
 {
-    if (!world_physics_ready()) return;
+    if (!world_get_tiled_map()) return;
 
-    // Ensure any newly-tagged entities create their Chipmunk bodies.
+    // Ensure any newly-tagged entities participate in the physics-lite step.
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
         if (!ecs_alive_idx(e)) continue;
         const uint32_t req = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
         if ((ecs_mask[e] & req) != req) continue;
-        if (!cmp_phys_body[e].cp_body && !cmp_phys_body[e].cp_shape) {
+        if (!cmp_phys_body[e].created) {
             ecs_phys_body_create_for_entity(e);
         }
     }
 
-    // Apply intent velocities to Chipmunk bodies.
+    bool  has_intent[ECS_MAX_ENTITIES];
+    for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
+        has_intent[e] = false;
+    }
+
+    // Apply intent velocities to positions (physics-lite).
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
         if (!ecs_alive_idx(e)) continue;
         const uint32_t req = (CMP_VEL | CMP_PHYS_BODY);
@@ -647,12 +644,22 @@ static void sys_physics_integrate_impl(float dt)
 
         cmp_velocity_t*  v  = &cmp_vel[e];
         cmp_phys_body_t* pb = &cmp_phys_body[e];
-        if (!pb->cp_body) continue;
+        if (!pb->created) continue;
+        if ((ecs_mask[e] & CMP_LIFTABLE) && cmp_liftable[e].state != LIFTABLE_STATE_ONGROUND) {
+            // Liftables handle their own airborne motion and disable collisions while carried/thrown.
+            v->x = 0.0f;
+            v->y = 0.0f;
+            continue;
+        }
 
         switch (pb->type) {
             case PHYS_DYNAMIC:
             case PHYS_KINEMATIC:
-                cpBodySetVelocity(pb->cp_body, cpv(v->x, v->y));
+                if (v->x != 0.0f || v->y != 0.0f) {
+                    has_intent[e] = true;
+                }
+                cmp_pos[e].x += v->x * dt;
+                cmp_pos[e].y += v->y * dt;
                 break;
             default:
                 break;
@@ -662,25 +669,93 @@ static void sys_physics_integrate_impl(float dt)
         v->y = 0.0f;
     }
 
-    world_physics_step(dt);
+    // Resolve entity/entity overlaps with a small iterative solver.
+    // Goal: preserve the current "buggy-but-good" feel:
+    // - NPCs (usually no intent) only move while being pushed.
+    // - The pusher (usually player) "struggles" and loses some of its intended motion.
+    for (int iter = 0; iter < 4; ++iter) {
+        for (int a = 0; a < ECS_MAX_ENTITIES; ++a) {
+            if (!ecs_alive_idx(a)) continue;
+            const uint32_t reqA = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
+            if ((ecs_mask[a] & reqA) != reqA) continue;
+            if (!cmp_phys_body[a].created) continue;
+            if ((ecs_mask[a] & CMP_LIFTABLE) && cmp_liftable[a].state != LIFTABLE_STATE_ONGROUND) continue;
 
-    // Sync Chipmunk positions back to ECS.
-    for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
-        if (!ecs_alive_idx(e)) continue;
-        const uint32_t req = (CMP_POS | CMP_PHYS_BODY);
-        if ((ecs_mask[e] & req) != req) continue;
+            for (int b = a + 1; b < ECS_MAX_ENTITIES; ++b) {
+                if (!ecs_alive_idx(b)) continue;
+                const uint32_t reqB = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
+                if ((ecs_mask[b] & reqB) != reqB) continue;
+                if (!cmp_phys_body[b].created) continue;
+                if ((ecs_mask[b] & CMP_LIFTABLE) && cmp_liftable[b].state != LIFTABLE_STATE_ONGROUND) continue;
 
-        cmp_phys_body_t* pb = &cmp_phys_body[e];
-        if (!pb->cp_body) continue;
+                const cmp_phys_body_t* pa = &cmp_phys_body[a];
+                const cmp_phys_body_t* pb = &cmp_phys_body[b];
 
-        cpVect p = cpBodyGetPosition(pb->cp_body);
-        cmp_pos[e].x = p.x;
-        cmp_pos[e].y = p.y;
-    }
+                // Optional collision filtering (only if configured on either body).
+                if (pa->category_bits || pa->mask_bits || pb->category_bits || pb->mask_bits) {
+                    const unsigned int catA = pa->category_bits ? pa->category_bits : 0xFFFFFFFFu;
+                    const unsigned int mskA = pa->mask_bits ? pa->mask_bits : 0xFFFFFFFFu;
+                    const unsigned int catB = pb->category_bits ? pb->category_bits : 0xFFFFFFFFu;
+                    const unsigned int mskB = pb->mask_bits ? pb->mask_bits : 0xFFFFFFFFu;
+                    if (((catA & mskB) == 0u) || ((catB & mskA) == 0u)) continue;
+                }
 
-    for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
-        if (!ecs_alive_idx(e)) continue;
-        resolve_tile_penetration(e);
+                if (pa->type == PHYS_STATIC && pb->type == PHYS_STATIC) continue;
+
+                const float ax = cmp_pos[a].x;
+                const float ay = cmp_pos[a].y;
+                const float bx = cmp_pos[b].x;
+                const float by = cmp_pos[b].y;
+                const float ahx = cmp_col[a].hx;
+                const float ahy = cmp_col[a].hy;
+                const float bhx = cmp_col[b].hx;
+                const float bhy = cmp_col[b].hy;
+
+                const float dx = bx - ax;
+                const float dy = by - ay;
+                const float px = (ahx + bhx) - fabsf(dx);
+                const float py = (ahy + bhy) - fabsf(dy);
+                if (px <= 0.0f || py <= 0.0f) continue;
+
+                const bool resolve_x = (px < py);
+                const float overlap = resolve_x ? px : py;
+                const float sign = resolve_x ? (dx >= 0.0f ? 1.0f : -1.0f) : (dy >= 0.0f ? 1.0f : -1.0f);
+
+                float wA = pa->inv_mass;
+                float wB = pb->inv_mass;
+                if (has_intent[a]) wA *= 2.0f;
+                if (has_intent[b]) wB *= 2.0f;
+
+                if (pa->type == PHYS_STATIC) wA = 0.0f;
+                if (pb->type == PHYS_STATIC) wB = 0.0f;
+
+                float sum = wA + wB;
+                float a_amt = 0.0f;
+                float b_amt = 0.0f;
+                if (sum > 0.0f) {
+                    a_amt = overlap * (wA / sum);
+                    b_amt = overlap * (wB / sum);
+                } else {
+                    // Fallback: split evenly.
+                    a_amt = overlap * 0.5f;
+                    b_amt = overlap * 0.5f;
+                }
+
+                // Separate along chosen axis.
+                if (resolve_x) {
+                    cmp_pos[a].x -= sign * a_amt;
+                    cmp_pos[b].x += sign * b_amt;
+                } else {
+                    cmp_pos[a].y -= sign * a_amt;
+                    cmp_pos[b].y += sign * b_amt;
+                }
+            }
+        }
+
+        for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
+            if (!ecs_alive_idx(e)) continue;
+            resolve_tile_penetration(e);
+        }
     }
 }
 
@@ -720,6 +795,7 @@ ecs_count_result_t ecs_count_entities(const uint32_t* masks, int num_masks)
 static void sys_input_adapt(float dt, const input_t* in) { sys_input(dt, in); }
 static void sys_follow_adapt(float dt, const input_t* in) { (void)in; sys_follow(dt); }
 static void sys_physics_adapt(float dt, const input_t* in) { (void)in; sys_physics_integrate_impl(dt); }
+static void sys_world_apply_edits_adapt(float dt, const input_t* in) { (void)dt; (void)in; world_apply_tile_edits(); }
 #if DEBUG_BUILD
 void sys_debug_binds(const input_t* in);
 static void sys_debug_binds_adapt(float dt, const input_t* in) { (void)dt; sys_debug_binds(in); }
@@ -755,6 +831,7 @@ static void ecs_register_builtin_systems(void)
     ecs_register_system(PHASE_SIM_POST, 200, sys_billboards_adapt, "billboards");
 
     ecs_register_system(PHASE_PRESENT,  100, sys_anim_sprite_adapt,"sprite_anim");
+    ecs_register_system(PHASE_PRESENT,  900, sys_world_apply_edits_adapt, "world_apply_edits");
 
 #if DEBUG_BUILD
     ecs_register_system(PHASE_DEBUG,    100, sys_debug_binds_adapt, "debug_binds");

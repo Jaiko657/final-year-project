@@ -8,7 +8,6 @@
 #include "../includes/toast.h"
 #include "../includes/camera.h"
 #include "../includes/world.h"
-#include "../includes/world_physics.h"
 #include "../includes/tiled.h"
 #include "../includes/renderer_internal.h"
 
@@ -18,9 +17,8 @@
 #include <stdio.h>
 #include <string.h>
 
-static tiled_map_t g_tiled_map;
 static tiled_renderer_t g_tiled_renderer;
-static bool g_tiled_ready = false;
+static uint32_t g_bound_gen = 0;
 static ItemArray g_painter_items = {0};
 static const char* ENTITY_LAYER_NAME = "entities"; // TMX object layer used to spawn ECS entities (not rendered directly)
 
@@ -28,11 +26,6 @@ static const char* ENTITY_LAYER_NAME = "entities"; // TMX object layer used to s
 static bool g_draw_ecs_colliders    = false;
 static bool g_draw_phys_colliders   = false;
 static bool g_draw_static_colliders = false;
-
-typedef struct {
-    const render_view_t* view;
-    Color color;
-} static_shape_draw_ctx_t;
 #endif
 
 #if DEBUG_BUILD && DEBUG_TRIGGERS
@@ -89,38 +82,35 @@ bool renderer_init(int width, int height, const char* title, int target_fps) {
     return true;
 }
 
-bool renderer_load_tiled_map(const char* tmx_path)
+bool renderer_bind_world_map(void)
 {
-    if (!tmx_path) return false;
-
-    tiled_map_t new_map;
-    tiled_renderer_t new_renderer;
-    if (!tiled_load_map(tmx_path, &new_map)) {
-        LOGC(LOGCAT_REND, LOG_LVL_ERROR, "tiled: failed to load '%s'", tmx_path);
+    const tiled_map_t* map = world_get_tiled_map();
+    if (!map) {
+        LOGC(LOGCAT_REND, LOG_LVL_ERROR, "tiled: no world map loaded");
         return false;
     }
-    if (!tiled_renderer_init(&new_renderer, &new_map)) {
-        LOGC(LOGCAT_REND, LOG_LVL_ERROR, "tiled: renderer init failed for '%s'", tmx_path);
-        tiled_free_map(&new_map);
+
+    tiled_renderer_t new_renderer;
+    if (!tiled_renderer_init(&new_renderer, map)) {
+        LOGC(LOGCAT_REND, LOG_LVL_ERROR, "tiled: renderer init failed (world map)");
         return false;
     }
 
     int world_w = 0, world_h = 0;
     world_size_tiles(&world_w, &world_h);
-    if (world_w > 0 && world_h > 0 && (world_w != new_map.width || world_h != new_map.height)) {
-        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX size %dx%d differs from collision map %dx%d", new_map.width, new_map.height, world_w, world_h);
+    if (world_w > 0 && world_h > 0 && (world_w != map->width || world_h != map->height)) {
+        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX size %dx%d differs from collision map %dx%d", map->width, map->height, world_w, world_h);
     }
     int tw = world_tile_size();
-    if (tw > 0 && tw != new_map.tilewidth) {
-        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX tilewidth %d differs from engine tile size %d", new_map.tilewidth, tw);
+    if (tw > 0 && tw != map->tilewidth) {
+        LOGC(LOGCAT_REND, LOG_LVL_WARN, "tiled: TMX tilewidth %d differs from engine tile size %d", map->tilewidth, tw);
     }
 
     renderer_unload_tiled_map();
-    g_tiled_map = new_map;
     g_tiled_renderer = new_renderer;
-    g_tiled_ready = true;
+    g_bound_gen = world_map_generation();
 
-    LOGC(LOGCAT_REND, LOG_LVL_INFO, "tiled: loaded '%s' (%dx%d @ %dx%d)", tmx_path, g_tiled_map.width, g_tiled_map.height, g_tiled_map.tilewidth, g_tiled_map.tileheight);
+    LOGC(LOGCAT_REND, LOG_LVL_INFO, "tiled: bound world map (%dx%d @ %dx%d)", map->width, map->height, map->tilewidth, map->tileheight);
     return true;
 }
 
@@ -154,16 +144,9 @@ void renderer_shutdown(void) {
 
 void renderer_unload_tiled_map(void)
 {
-    if (!g_tiled_ready) return;
+    if (g_bound_gen == 0) return;
     tiled_renderer_shutdown(&g_tiled_renderer);
-    tiled_free_map(&g_tiled_map);
-    g_tiled_ready = false;
-}
-
-tiled_map_t* renderer_get_tiled_map(void)
-{
-    if (!g_tiled_ready) return NULL;
-    return &g_tiled_map;
+    g_bound_gen = 0;
 }
 
 #if DEBUG_BUILD
@@ -239,15 +222,20 @@ static render_view_t build_camera_view(void){
 }
 
 static void draw_world(const render_view_t* view) {
+    if (g_bound_gen != 0 && g_bound_gen != world_map_generation()) {
+        renderer_bind_world_map();
+    }
+
+    const tiled_map_t* map = world_get_tiled_map();
     int startX = 0, startY = 0, endX = 0, endY = 0;
     int visible_tiles = 0;
-    bool has_vis = g_tiled_ready &&
-        visible_tile_range(&g_tiled_map, view->padded_view, &startX, &startY, &endX, &endY, &visible_tiles);
+    bool has_vis = map &&
+        visible_tile_range(map, view->padded_view, &startX, &startY, &endX, &endY, &visible_tiles);
 
     // ===== painter’s algorithm queue =====
     int painter_cap = 0;
     if (has_vis) {
-        int layer_count = (int)g_tiled_map.layer_count;
+        int layer_count = (int)map->layer_count;
         if (layer_count < 1) layer_count = 1;
         painter_cap = visible_tiles * layer_count;
     }
@@ -258,16 +246,14 @@ static void draw_world(const render_view_t* view) {
     DA_CLEAR(&g_painter_items);
     painter_queue_ctx_t painter_ctx = { .queue = &g_painter_items, .dropped = 0 };
 
-    if (g_tiled_ready) {
-        sync_collision_from_tmx_if_ready();
-
+    if (map) {
         if (!has_vis) {
             startX = 0;
             startY = 0;
-            endX = g_tiled_map.width;
-            endY = g_tiled_map.height;
+            endX = map->width;
+            endY = map->height;
         }
-        draw_tmx_stack(view, startX, startY, endX, endY, &painter_ctx);
+        draw_tmx_stack(map, view, startX, startY, endX, endY, &painter_ctx);
     } else {
         draw_world_fallback_tiles(view);
     }
@@ -315,13 +301,8 @@ static bool visible_tile_range(const tiled_map_t* map,
     return true;
 }
 
-static void sync_collision_from_tmx_if_ready(void)
-{
-    if (!g_tiled_ready) return;
-    world_sync_tiled_colliders(&g_tiled_map);
-}
-
-static void draw_tmx_stack(const render_view_t* view,
+static void draw_tmx_stack(const tiled_map_t* map,
+                           const render_view_t* view,
                            int startX, int startY, int endX, int endY,
                            painter_queue_ctx_t* painter_ctx)
 {
@@ -329,20 +310,21 @@ static void draw_tmx_stack(const render_view_t* view,
 
     size_t layer_i = 0;
     size_t obj_i = 0;
-    while (layer_i < g_tiled_map.layer_count || obj_i < g_tiled_map.object_count) {
-        int next_layer_z = (layer_i < g_tiled_map.layer_count) ? g_tiled_map.layers[layer_i].z_order : INT_MAX;
-        int next_obj_z   = (obj_i < g_tiled_map.object_count) ? g_tiled_map.objects[obj_i].layer_z : INT_MAX;
+    if (!map) return;
+    while (layer_i < map->layer_count || obj_i < map->object_count) {
+        int next_layer_z = (layer_i < map->layer_count) ? map->layers[layer_i].z_order : INT_MAX;
+        int next_obj_z   = (obj_i < map->object_count) ? map->objects[obj_i].layer_z : INT_MAX;
         int z = (next_layer_z < next_obj_z) ? next_layer_z : next_obj_z;
 
         // Draw all tile layers at this z.
-        while (layer_i < g_tiled_map.layer_count && g_tiled_map.layers[layer_i].z_order == z) {
-            draw_tile_layer(&g_tiled_map, &g_tiled_renderer, &g_tiled_map.layers[layer_i], startX, startY, endX, endY, painter_ctx);
+        while (layer_i < map->layer_count && map->layers[layer_i].z_order == z) {
+            draw_tile_layer(map, &g_tiled_renderer, &map->layers[layer_i], startX, startY, endX, endY, painter_ctx);
             layer_i++;
         }
 
         // Draw all objects at this z.
-        if (obj_i < g_tiled_map.object_count && g_tiled_map.objects[obj_i].layer_z == z) {
-            obj_i = draw_object_layer_at_z(&g_tiled_map, &g_tiled_renderer, view, painter_ctx, obj_i, z);
+        if (obj_i < map->object_count && map->objects[obj_i].layer_z == z) {
+            obj_i = draw_object_layer_at_z(map, &g_tiled_renderer, view, painter_ctx, obj_i, z);
         }
     }
 }
@@ -625,19 +607,6 @@ static void draw_debug_collision_overlays(const render_view_t* view)
     }
 }
 
-static void draw_bb_cb(const cpBB* bb, void* ud)
-{
-    if (!bb || !ud) return;
-    static_shape_draw_ctx_t* c = (static_shape_draw_ctx_t*)ud;
-    Rectangle r = {
-        (float)bb->l,
-        (float)bb->b,
-        (float)(bb->r - bb->l),
-        (float)(bb->t - bb->b)
-    };
-    draw_collider_outline(r, &c->view->padded_view, c->color);
-}
-
 static Rectangle collider_bounds_at(float x, float y, float hx, float hy){
     return (Rectangle){ x - hx, y - hy, 2.f * hx, 2.f * hy };
 }
@@ -654,9 +623,41 @@ static void draw_collider_outline(Rectangle bounds, const Rectangle* padded_view
 
 static void draw_static_colliders(const render_view_t* view, Color color)
 {
-    if (!world_physics_ready()) return;
-    static_shape_draw_ctx_t ctx = { view, color };
-    world_physics_for_each_static_shape(draw_bb_cb, &ctx);
+    int tiles_w = 0, tiles_h = 0;
+    world_size_tiles(&tiles_w, &tiles_h);
+    int tile_px = world_tile_size();
+    int subtile_px = world_subtile_size();
+    if (tiles_w <= 0 || tiles_h <= 0 || tile_px <= 0 || subtile_px <= 0) return;
+
+    int subtiles_per_tile = tile_px / subtile_px;
+    if (subtiles_per_tile <= 0) return;
+
+    for (int ty = 0; ty < tiles_h; ++ty) {
+        for (int tx = 0; tx < tiles_w; ++tx) {
+            if (world_tile_is_dynamic(tx, ty)) continue;
+
+            Rectangle tile_rect = { (float)(tx * tile_px), (float)(ty * tile_px), (float)tile_px, (float)tile_px };
+            if (!rects_intersect(tile_rect, view->padded_view)) continue;
+
+            uint16_t mask = world_subtile_mask_at(tx, ty);
+            if (mask == 0) continue;
+
+            for (int sy = 0; sy < subtiles_per_tile; ++sy) {
+                for (int sx = 0; sx < subtiles_per_tile; ++sx) {
+                    int bit = sy * subtiles_per_tile + sx;
+                    if ((mask & (uint16_t)(1u << bit)) == 0) continue;
+
+                    Rectangle r = {
+                        tile_rect.x + (float)(sx * subtile_px),
+                        tile_rect.y + (float)(sy * subtile_px),
+                        (float)subtile_px,
+                        (float)subtile_px
+                    };
+                    draw_collider_outline(r, &view->padded_view, color);
+                }
+            }
+        }
+    }
 }
 
 static void draw_dynamic_colliders(const render_view_t* view, Color color)
