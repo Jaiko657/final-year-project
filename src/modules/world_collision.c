@@ -309,6 +309,11 @@ bool world_is_walkable_rect_px(float cx, float cy, float hx, float hy)
     float bottom = cy - hy;
     float top    = cy + hy;
 
+    // Treat right/top edges as exclusive so an AABB exactly aligned to a subtile boundary
+    // does not query the adjacent subtile as "occupied".
+    if (hx > 0.0f) right = nextafterf(right, -INFINITY);
+    if (hy > 0.0f) top   = nextafterf(top, -INFINITY);
+
     int sx0 = (int)floorf(left / (float)ss);
     int sx1 = (int)floorf(right / (float)ss);
     int sy0 = (int)floorf(bottom / (float)ss);
@@ -320,6 +325,100 @@ bool world_is_walkable_rect_px(float cx, float cy, float hx, float hy)
         }
     }
     return true;
+}
+
+bool world_resolve_rect_axis_px(float* io_cx, float* io_cy, float hx, float hy, bool axis_x)
+{
+    if (!io_cx || !io_cy) return false;
+
+    int tiles_w = 0, tiles_h = 0;
+    world_size_tiles(&tiles_w, &tiles_h);
+    int tile_px = world_tile_size();
+    int subtile_px = world_subtile_size();
+    if (tiles_w <= 0 || tiles_h <= 0 || tile_px <= 0 || subtile_px <= 0) return false;
+    int subtiles_per_tile = tile_px / subtile_px;
+    if (subtiles_per_tile <= 0) return false;
+    int subtiles_w = tiles_w * subtiles_per_tile;
+    int subtiles_h = tiles_h * subtiles_per_tile;
+    if (subtiles_w <= 0 || subtiles_h <= 0) return false;
+
+    if (hx <= 0.0f || hy <= 0.0f) return false;
+
+    float cx = *io_cx;
+    float cy = *io_cy;
+
+    bool moved_any = false;
+    for (int pass = 0; pass < 4; ++pass) {
+        float left = cx - hx;
+        float right = cx + hx;
+        float bottom = cy - hy;
+        float top = cy + hy;
+
+        int min_sx = (int)floorf(left / (float)subtile_px);
+        int max_sx = (int)floorf(right / (float)subtile_px);
+        int min_sy = (int)floorf(bottom / (float)subtile_px);
+        int max_sy = (int)floorf(top / (float)subtile_px);
+
+        if (min_sx < 0) min_sx = 0;
+        if (min_sy < 0) min_sy = 0;
+        if (max_sx >= subtiles_w) max_sx = subtiles_w - 1;
+        if (max_sy >= subtiles_h) max_sy = subtiles_h - 1;
+
+        bool moved = false;
+        bool found_resolve = false;
+        float best_resolve = 0.0f;
+        for (int sy = min_sy; sy <= max_sy; ++sy) {
+            for (int sx = min_sx; sx <= max_sx; ++sx) {
+                if (world_is_walkable_subtile(sx, sy)) continue;
+
+                float tile_left = (float)sx * (float)subtile_px;
+                float tile_right = tile_left + (float)subtile_px;
+                float tile_bottom = (float)sy * (float)subtile_px;
+                float tile_top = tile_bottom + (float)subtile_px;
+
+                if (right <= tile_left || left >= tile_right) continue;
+                if (top <= tile_bottom || bottom >= tile_top) continue;
+
+                if (axis_x) {
+                    float pen_x_left = right - tile_left;
+                    float pen_x_right = tile_right - left;
+                    float resolve_x = (pen_x_left < pen_x_right) ? -pen_x_left : pen_x_right;
+                    if (!found_resolve || fabsf(resolve_x) > fabsf(best_resolve)) {
+                        best_resolve = resolve_x;
+                        found_resolve = true;
+                    }
+                } else {
+                    float pen_y_bottom = top - tile_bottom;
+                    float pen_y_top = tile_top - bottom;
+                    float resolve_y = (pen_y_bottom < pen_y_top) ? -pen_y_bottom : pen_y_top;
+                    if (!found_resolve || fabsf(resolve_y) > fabsf(best_resolve)) {
+                        best_resolve = resolve_y;
+                        found_resolve = true;
+                    }
+                }
+            }
+        }
+
+        if (found_resolve) {
+            if (axis_x) cx += best_resolve;
+            else cy += best_resolve;
+            moved = true;
+        }
+
+        moved_any |= moved;
+        if (!moved) break;
+    }
+
+    *io_cx = cx;
+    *io_cy = cy;
+    return moved_any;
+}
+
+bool world_resolve_rect_slide_px(float* io_cx, float* io_cy, float hx, float hy)
+{
+    bool moved_x = world_resolve_rect_axis_px(io_cx, io_cy, hx, hy, true);
+    bool moved_y = world_resolve_rect_axis_px(io_cx, io_cy, hx, hy, false);
+    return moved_x || moved_y;
 }
 
 bool world_has_line_of_sight(float x0, float y0, float x1, float y1, float max_range, float hx, float hy)
@@ -356,4 +455,3 @@ v2f world_get_spawn_px(void)
     }
     return v2f_make(g_world.spawn.x, g_world.spawn.y);
 }
-

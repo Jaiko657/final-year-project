@@ -93,72 +93,13 @@ static void resolve_tile_penetration(int i)
     if (!cmp_phys_body[i].created) return;
     if ((ecs_mask[i] & CMP_LIFTABLE) && cmp_liftable[i].state != LIFTABLE_STATE_ONGROUND) return;
 
-    int tiles_w = 0, tiles_h = 0;
-    world_size_tiles(&tiles_w, &tiles_h);
-    int tile_px = world_tile_size();
-    int subtile_px = world_subtile_size();
-    if (tiles_w <= 0 || tiles_h <= 0 || tile_px <= 0 || subtile_px <= 0) return;
-    int subtiles_per_tile = tile_px / subtile_px;
-    if (subtiles_per_tile <= 0) return;
-    int subtiles_w = tiles_w * subtiles_per_tile;
-    int subtiles_h = tiles_h * subtiles_per_tile;
-
     float hx = cmp_col[i].hx;
     float hy = cmp_col[i].hy;
     if (hx <= 0.0f || hy <= 0.0f) return;
 
     float cx = cmp_pos[i].x;
     float cy = cmp_pos[i].y;
-    float left = cx - hx;
-    float right = cx + hx;
-    float bottom = cy - hy;
-    float top = cy + hy;
-
-    int min_sx = (int)floorf(left / (float)subtile_px);
-    int max_sx = (int)floorf(right / (float)subtile_px);
-    int min_sy = (int)floorf(bottom / (float)subtile_px);
-    int max_sy = (int)floorf(top / (float)subtile_px);
-
-    if (min_sx < 0) min_sx = 0;
-    if (min_sy < 0) min_sy = 0;
-    if (max_sx >= subtiles_w) max_sx = subtiles_w - 1;
-    if (max_sy >= subtiles_h) max_sy = subtiles_h - 1;
-
-    bool moved = false;
-    for (int sy = min_sy; sy <= max_sy; ++sy) {
-        for (int sx = min_sx; sx <= max_sx; ++sx) {
-            if (world_is_walkable_subtile(sx, sy)) continue;
-
-            float tile_left = (float)sx * (float)subtile_px;
-            float tile_right = tile_left + (float)subtile_px;
-            float tile_bottom = (float)sy * (float)subtile_px;
-            float tile_top = tile_bottom + (float)subtile_px;
-
-            if (right <= tile_left || left >= tile_right) continue;
-            if (top <= tile_bottom || bottom >= tile_top) continue;
-
-            float pen_x_left = right - tile_left;
-            float pen_x_right = tile_right - left;
-            float pen_y_bottom = top - tile_bottom;
-            float pen_y_top = tile_top - bottom;
-
-            float resolve_x = (pen_x_left < pen_x_right) ? -pen_x_left : pen_x_right;
-            float resolve_y = (pen_y_bottom < pen_y_top) ? -pen_y_bottom : pen_y_top;
-
-            if (fabsf(resolve_x) < fabsf(resolve_y)) {
-                cx += resolve_x;
-                left += resolve_x;
-                right += resolve_x;
-            } else {
-                cy += resolve_y;
-                bottom += resolve_y;
-                top += resolve_y;
-            }
-            moved = true;
-        }
-    }
-
-    if (moved) {
+    if (world_resolve_rect_slide_px(&cx, &cy, hx, hy)) {
         set_position_sync_body(i, cx, cy);
     }
 }
@@ -658,8 +599,33 @@ static void sys_physics_integrate_impl(float dt)
                 if (v->x != 0.0f || v->y != 0.0f) {
                     has_intent[e] = true;
                 }
-                cmp_pos[e].x += v->x * dt;
-                cmp_pos[e].y += v->y * dt;
+                {
+                    float dx = v->x * dt;
+                    float dy = v->y * dt;
+
+                    const uint32_t tile_req = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
+                    const bool can_collide_tiles = ((ecs_mask[e] & tile_req) == tile_req) && pb->created;
+
+                    if (dx != 0.0f) {
+                        float cx = cmp_pos[e].x + dx;
+                        float cy = cmp_pos[e].y;
+                        if (can_collide_tiles) {
+                            world_resolve_rect_axis_px(&cx, &cy, cmp_col[e].hx, cmp_col[e].hy, true);
+                        }
+                        cmp_pos[e].x = cx;
+                        cmp_pos[e].y = cy;
+                    }
+
+                    if (dy != 0.0f) {
+                        float cx = cmp_pos[e].x;
+                        float cy = cmp_pos[e].y + dy;
+                        if (can_collide_tiles) {
+                            world_resolve_rect_axis_px(&cx, &cy, cmp_col[e].hx, cmp_col[e].hy, false);
+                        }
+                        cmp_pos[e].x = cx;
+                        cmp_pos[e].y = cy;
+                    }
+                }
                 break;
             default:
                 break;

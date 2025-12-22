@@ -21,6 +21,11 @@ bool world_tile_is_dynamic(int tx, int ty);
 bool world_is_walkable_px(float x, float y);
 bool world_is_walkable_subtile(int sx, int sy);
 bool world_is_walkable_rect_px(float cx, float cy, float hx, float hy);
+// Push an AABB out of solid world geometry along a single axis (X if axis_x=true, otherwise Y).
+// Returns true if the rect was moved.
+bool world_resolve_rect_axis_px(float* io_cx, float* io_cy, float hx, float hy, bool axis_x);
+// Push an AABB out of solid world geometry using per-axis resolution (X then Y).
+// Returns true if the rect was moved.
+bool world_resolve_rect_slide_px(float* io_cx, float* io_cy, float hx, float hy);
 bool world_has_line_of_sight(float x0, float y0, float x1, float y1, float max_range, float hx, float hy);
 v2f  world_get_spawn_px(void);
-
