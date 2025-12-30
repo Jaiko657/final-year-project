@@ -1,4 +1,4 @@
-#include "../includes/input.h"
+#include "modules/core/input.h"
 
 void input_init_defaults(void) { }
 void input_bind(button_t btn, int keycode) { (void)btn; (void)keycode; }

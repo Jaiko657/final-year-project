@@ -1,9 +1,9 @@
-#include "../includes/tiled.h"
-#include "../includes/asset.h"
+#include "modules/tiled/tiled.h"
+#include "modules/asset/asset.h"
  
 #include <stdlib.h>
  
-bool tiled_renderer_init(tiled_renderer_t *r, const tiled_map_t *map)
+bool tiled_renderer_init(tiled_renderer_t *r, const world_map_t *map)
 {
     if (!r || !map || map->tileset_count == 0) return false;
     *r = (tiled_renderer_t){0};

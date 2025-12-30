@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <prefab name="player">
+  <component type="POS" override="true"/>
   <component type="VEL" x="0" y="0" dir="south"/>
   <component type="SPR" path="assets/images/player.png" src="0,16,16,16" ox="8" oy="8"/>
   <component type="PLAYER"/>

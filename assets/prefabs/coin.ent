@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <prefab name="coin">
+  <component type="POS" override="true"/>
   <component type="SPR" path="assets/images/coin_gold.png" src="0,0,32,32" ox="16" oy="16"/>
   <component type="ITEM" kind="coin"/>
   <component type="COL" hx="8" hy="8"/>

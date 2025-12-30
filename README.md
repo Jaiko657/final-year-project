@@ -6,7 +6,7 @@ Final year project: a small 2D tile-based game built on a custom C99 engine (ECS
 
 ### Prereqs
 
-- C compiler: `gcc` or `clang`
+- C compiler: `gcc`
 - Build tools: `git`, `cmake`, `make`
 - X11/OpenGL dev packages (needed by Raylib/GLFW)
 
@@ -32,13 +32,13 @@ This initializes `git` submodules, applies local patches, and builds:
 
 ```bash
 # Build tool (only needed if ./nob isn't already present)
-cc -O2 -o nob build.c
+cc -O2 -o nob src/build.c
 
 # Build the game (default is release)
 ./nob
 
 # Run (from repo root so relative assets paths work)
-./build/game
+./build/src/game
 ```
 
 ### Headless build (no window)
@@ -47,13 +47,29 @@ Useful for quick simulation/CI-style runs.
 
 ```bash
 ./nob --headless
-HEADLESS_MAX_FRAMES=600 ./build/game_headless
+HEADLESS_MAX_FRAMES=600 ./build/src/game_headless
 ```
 
 Build flags:
 - `--debug` enables extra debug toggles/overlays
 - `--release` forces release flags
-- `--headless` builds `build/game_headless`
+- `--headless` builds `build/src/game_headless`
+
+### Unit tests
+
+```bash
+# Build the test helper
+cc -O2 -o nob_tests tests/build_tests.c
+
+# Build the unit suite into `build/tests`
+./nob_tests
+
+# Build + run the unit suite
+./nob_tests --run
+
+# (Optional) Build + run with coverage output under `build/tests/coverage`
+./nob_tests --coverage
+```
 
 ## Controls
 

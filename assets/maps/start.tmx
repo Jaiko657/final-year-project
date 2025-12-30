@@ -96,7 +96,7 @@
   <object id="54" gid="908" x="242" y="152" width="32" height="32"/>
  </objectgroup>
  <objectgroup id="7" name="entities">
-  <object id="19" gid="1309" x="64" y="96" width="32" height="32">
+  <object id="19" name="single_door" gid="1309" x="64" y="96" width="32" height="32">
    <properties>
     <property name="animationtype" value="proximity-door"/>
     <property name="door_tiles" value="2,2"/>
@@ -104,7 +104,7 @@
     <property name="proximity_radius" type="int" value="8"/>
    </properties>
   </object>
-  <object id="20" gid="1309" x="192" y="224" width="64" height="32">
+  <object id="20" name="double_door" gid="1309" x="192" y="224" width="64" height="32">
    <properties>
     <property name="animationtype" value="proximity-door"/>
     <property name="door_tiles" value="6,6;7,6"/>

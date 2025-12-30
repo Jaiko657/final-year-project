@@ -1,374 +1,192 @@
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #define NOB_IMPLEMENTATION
 #include "../third_party/nob.h"
 
-#include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
 
-typedef struct {
-    const char *path;
-    const char *name;
-} Test_Fn;
-
-static bool cstr_ends_with(const char *s, const char *suffix)
-{
-    if (!s || !suffix) return false;
-    size_t n = strlen(s);
-    size_t m = strlen(suffix);
-    if (m > n) return false;
-    return memcmp(s + (n - m), suffix, m) == 0;
-}
-
-static bool cstr_starts_with(const char *s, const char *prefix)
-{
-    if (!s || !prefix) return false;
-    size_t n = strlen(prefix);
-    return strncmp(s, prefix, n) == 0;
-}
-
-static bool is_dot_entry(const char *name)
-{
-    return name && (strcmp(name, ".") == 0 || strcmp(name, "..") == 0);
-}
-
-static void sort_cstrs(Nob_File_Paths *xs)
-{
-    if (!xs || xs->count < 2) return;
-    for (size_t i = 1; i < xs->count; ++i) {
-        const char *key = xs->items[i];
-        size_t j = i;
-        while (j > 0 && strcmp(xs->items[j - 1], key) > 0) {
-            xs->items[j] = xs->items[j - 1];
-            --j;
-        }
-        xs->items[j] = key;
-    }
-}
-
-static bool gather_unit_test_sources(Nob_File_Paths *out_sources)
-{
-    Nob_File_Paths children = {0};
-    if (!nob_read_entire_dir("tests/unit", &children)) return false;
-
-    for (size_t i = 0; i < children.count; ++i) {
-        const char *name = children.items[i];
-        if (is_dot_entry(name)) continue;
-        if (!cstr_ends_with(name, ".c")) continue;
-        if (!cstr_starts_with(name, "test_")) continue;
-        nob_da_append(out_sources, nob_temp_sprintf("tests/unit/%s", name));
-    }
-    sort_cstrs(out_sources);
-    return true;
-}
-
-static bool gather_stub_sources(Nob_File_Paths *out_sources)
-{
-    Nob_File_Paths children = {0};
-    if (!nob_read_entire_dir("tests/stubs", &children)) return false;
-
-    for (size_t i = 0; i < children.count; ++i) {
-        const char *name = children.items[i];
-        if (is_dot_entry(name)) continue;
-        if (!cstr_ends_with(name, ".c")) continue;
-        nob_da_append(out_sources, nob_temp_sprintf("tests/stubs/%s", name));
-    }
-    sort_cstrs(out_sources);
-    return true;
-}
-
-static const char *sanitize_path_for_obj(const char *path)
-{
-    // Convert `src/modules/foo.c` -> `src_modules_foo_c` to avoid nested dirs and collisions.
-    // (Simple + stable; good enough for this repo.)
-    Nob_String_Builder sb = {0};
-    for (const char *p = path; p && *p; ++p) {
-        char c = *p;
-        if ((c >= 'a' && c <= 'z') ||
-            (c >= 'A' && c <= 'Z') ||
-            (c >= '0' && c <= '9'))
-        {
-            nob_sb_append_buf(&sb, &c, 1);
-        } else {
-            char u = '_';
-            nob_sb_append_buf(&sb, &u, 1);
-        }
-    }
-    nob_sb_append_null(&sb);
-    return sb.items;
-}
-
-static bool compile_obj(const char *cc, const char *cflags, const char *includes, const char *src, const char *obj)
+static bool compile_exe(const char *cc, const char *cflags, const char *includes, const char *src, const char *out, const char *ldflags)
 {
     Nob_Cmd cmd = {0};
     nob_cmd_append(&cmd, "sh", "-lc",
-        nob_temp_sprintf("%s %s %s -c %s -o %s",
+        nob_temp_sprintf("%s %s %s %s -o %s %s",
             cc,
             cflags ? cflags : "",
             includes ? includes : "",
             src,
-            obj
+            out,
+            ldflags ? ldflags : ""
         )
     );
     return nob_cmd_run_sync_and_reset(&cmd);
 }
 
-static void sb_append_paths(Nob_String_Builder *sb, const Nob_File_Paths *paths)
+static bool build_tool(const char *cc, const char *src, const char *out)
 {
-    for (size_t i = 0; i < paths->count; ++i) {
-        nob_sb_append_cstr(sb, paths->items[i]);
-        nob_sb_append_cstr(sb, " ");
-    }
+    const char *cflags = "-std=c99 -Wall -Wextra -O0 -g -D_POSIX_C_SOURCE=200809L";
+    return compile_exe(cc, cflags, NULL, src, out, NULL);
 }
 
-static bool read_manifest_sources(const char *manifest_path, Nob_File_Paths *out_sources)
+static bool run_tool(const char *tool_path, const char *arg)
 {
-    Nob_String_Builder sb = {0};
-    if (!nob_read_entire_file(manifest_path, &sb)) return false;
-    nob_sb_append_null(&sb);
-
-    char *p = sb.items;
-    while (p && *p) {
-        char *line = p;
-        char *nl = strchr(p, '\n');
-        if (nl) {
-            *nl = '\0';
-            p = nl + 1;
-        } else {
-            p = NULL;
-        }
-
-        // trim leading spaces
-        while (*line == ' ' || *line == '\t' || *line == '\r') line++;
-        if (*line == '\0') continue;
-        if (*line == '#') continue;
-
-        // trim trailing spaces
-        char *end = line + strlen(line);
-        while (end > line && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r')) {
-            end[-1] = '\0';
-            end--;
-        }
-
-        if (*line == '\0') continue;
-        nob_da_append(out_sources, nob_temp_strdup(line));
+    Nob_Cmd cmd = {0};
+    nob_cmd_append(&cmd, tool_path);
+    if (arg && arg[0] != '\0') {
+        nob_cmd_append(&cmd, arg);
     }
-
-    sort_cstrs(out_sources);
-    nob_sb_free(sb);
-    return true;
-}
-
-static void sort_test_fns(Test_Fn *items, size_t count)
-{
-    // sort by name for stable ordering
-    for (size_t i = 1; i < count; ++i) {
-        Test_Fn key = items[i];
-        size_t j = i;
-        while (j > 0 && strcmp(items[j - 1].name, key.name) > 0) {
-            items[j] = items[j - 1];
-            --j;
-        }
-        items[j] = key;
-    }
-}
-
-static bool extract_test_functions(const char *path, Test_Fn **out_items, size_t *out_count, size_t *out_cap)
-{
-    Nob_String_Builder sb = {0};
-    if (!nob_read_entire_file(path, &sb)) return false;
-    nob_sb_append_null(&sb);
-
-    const char *s = sb.items;
-    const char *needle = "void test_";
-    const size_t needle_len = strlen(needle);
-
-    for (;;) {
-        const char *hit = strstr(s, needle);
-        if (!hit) break;
-
-        const char *name_start = hit + strlen("void ");
-        const char *paren = strchr(name_start, '(');
-        if (!paren) break;
-
-        // Extract identifier
-        size_t name_len = (size_t)(paren - name_start);
-        if (name_len > 0 && name_len < 256) {
-            char buf[256];
-            memcpy(buf, name_start, name_len);
-            buf[name_len] = '\0';
-
-            // Only treat `void test_foo(void)` as a Unity test entrypoint.
-            const char *args = paren + 1;
-            while (*args == ' ' || *args == '\t' || *args == '\r' || *args == '\n') args++;
-            bool args_ok = (strncmp(args, "void", 4) == 0);
-            if (args_ok) {
-                args += 4;
-                while (*args == ' ' || *args == '\t' || *args == '\r' || *args == '\n') args++;
-                args_ok = (*args == ')');
-            }
-
-            // Basic validation: must start with test_ and contain only identifier chars
-            bool ok = args_ok && cstr_starts_with(buf, "test_");
-            for (size_t i = 0; ok && i < name_len; ++i) {
-                char c = buf[i];
-                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')) ok = false;
-            }
-
-            if (ok) {
-                if (*out_count >= *out_cap) {
-                    size_t new_cap = (*out_cap == 0) ? 64 : (*out_cap * 2);
-                    *out_items = (Test_Fn*)NOB_REALLOC(*out_items, new_cap * sizeof(**out_items));
-                    NOB_ASSERT(*out_items);
-                    *out_cap = new_cap;
-                }
-                (*out_items)[(*out_count)++] = (Test_Fn){ .path = path, .name = nob_temp_strdup(buf) };
-            }
-        }
-
-        s = hit + needle_len;
-    }
-
-    nob_sb_free(sb);
-    return true;
-}
-
-static bool generate_unity_runner(const Nob_File_Paths *test_sources, const char *out_path)
-{
-    Test_Fn *items = NULL;
-    size_t count = 0;
-    size_t cap = 0;
-
-    for (size_t i = 0; i < test_sources->count; ++i) {
-        if (!extract_test_functions(test_sources->items[i], &items, &count, &cap)) {
-            NOB_FREE(items);
-            return false;
-        }
-    }
-
-    if (count == 0) {
-        nob_log(NOB_ERROR, "No test_* functions found in tests/unit/test_*.c");
-        NOB_FREE(items);
-        return false;
-    }
-
-    sort_test_fns(items, count);
-
-    Nob_String_Builder sb = {0};
-    nob_sb_append_cstr(&sb, "#include \"unity.h\"\n\n");
-    for (size_t i = 0; i < count; ++i) {
-        nob_sb_appendf(&sb, "void %s(void);\n", items[i].name);
-    }
-    nob_sb_append_cstr(&sb, "\nvoid setUp(void) {}\nvoid tearDown(void) {}\n\n");
-    nob_sb_append_cstr(&sb, "int main(void)\n{\n    UNITY_BEGIN();\n\n");
-    for (size_t i = 0; i < count; ++i) {
-        nob_sb_appendf(&sb, "    RUN_TEST(%s);\n", items[i].name);
-    }
-    nob_sb_append_cstr(&sb, "\n    return UNITY_END();\n}\n");
-
-    if (!nob_write_entire_file(out_path, sb.items, sb.count)) {
-        nob_sb_free(sb);
-        NOB_FREE(items);
-        return false;
-    }
-
-    nob_sb_free(sb);
-    NOB_FREE(items);
-    return true;
+    return nob_cmd_run_sync_and_reset(&cmd);
 }
 
 int main(int argc, char **argv)
 {
     NOB_GO_REBUILD_URSELF(argc, argv);
 
+    bool run_tests = false;
     bool coverage = false;
+    bool verbose = false;
     for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--coverage") == 0) coverage = true;
+        if (strcmp(argv[i], "--run") == 0) run_tests = true;
+        else if (strcmp(argv[i], "--coverage") == 0) coverage = true;
+        else if (strcmp(argv[i], "--verbose") == 0) verbose = true;
     }
+    if (coverage) run_tests = true;
 
-    if (!nob_mkdir_if_not_exists("build")) return 1;
-    if (!nob_mkdir_if_not_exists("build/obj")) return 1;
-    if (!nob_mkdir_if_not_exists("build/obj/unit")) return 1;
-    if (!nob_mkdir_if_not_exists("build/obj/unit/gen")) return 1;
+    nob_minimal_log_level = verbose ? NOB_INFO : NOB_WARNING;
+
+    if (!nob_mkdir_if_not_exists("build/tests")) return 1;
+    if (!nob_mkdir_if_not_exists("build/tests/bin")) return 1;
+    if (!nob_mkdir_if_not_exists("build/tests/gen")) return 1;
+    if (!nob_mkdir_if_not_exists("build/tests/obj")) return 1;
+    if (!nob_mkdir_if_not_exists("build/tests/plugins")) return 1;
     if (coverage) {
-        if (!nob_mkdir_if_not_exists("build/coverage")) return 1;
-        // Avoid gcov checksum warnings when toggling sources/flags between runs.
+        if (!nob_mkdir_if_not_exists("build/tests/coverage")) return 1;
         Nob_Cmd clean = {0};
-        nob_cmd_append(&clean, "sh", "-lc", "rm -f build/obj/unit/*.gcda build/obj/unit/*.gcov");
+        nob_cmd_append(&clean, "sh", "-lc",
+            "rm -f build/tests/obj/*/*.gcda build/tests/obj/*/*.gcov");
         if (!nob_cmd_run_sync_and_reset(&clean)) return 1;
     }
 
-    Nob_File_Paths test_sources = {0};
-    if (!gather_unit_test_sources(&test_sources)) return 1;
-
-    Nob_File_Paths stub_sources = {0};
-    if (!gather_stub_sources(&stub_sources)) return 1;
-
-    Nob_File_Paths manifest_sources = {0};
-    if (!read_manifest_sources("tests/unit/manifest.txt", &manifest_sources)) return 1;
-
-    const char *runner_path = "build/obj/unit/gen/unity_runner.c";
-    if (!generate_unity_runner(&test_sources, runner_path)) return 1;
+    {
+        Nob_Cmd clean = {0};
+        nob_cmd_append(&clean, "sh", "-lc", "rm -f build/tests/plugins/*.so build/tests/gen/tests_*_runner.c");
+        if (!nob_cmd_run_sync_and_reset(&clean)) return 1;
+    }
 
     const char *cc = getenv("CC");
     if (!cc || cc[0] == '\0') cc = "cc";
 
-	    const char *includes =
-	        "-I third_party/Unity/src "
-	        "-I src/includes "
-	        "-I third_party/xml.c/src "
-	        "-I tests/stubs";
-    const char *cflags = coverage
-        ? "-std=c99 -Wall -Wextra -O0 -g --coverage -DUNIT_TEST=1"
-        : "-std=c99 -Wall -Wextra -O0 -g -DUNIT_TEST=1";
-
-    // Compile all sources to objects (keeps coverage artifacts in build/obj/unit).
-    Nob_File_Paths all_sources = {0};
-    nob_da_append(&all_sources, "third_party/Unity/src/unity.c");
-    for (size_t i = 0; i < manifest_sources.count; ++i) nob_da_append(&all_sources, manifest_sources.items[i]);
-    for (size_t i = 0; i < stub_sources.count; ++i) nob_da_append(&all_sources, stub_sources.items[i]);
-    for (size_t i = 0; i < test_sources.count; ++i) nob_da_append(&all_sources, test_sources.items[i]);
-    nob_da_append(&all_sources, runner_path);
-
-    Nob_File_Paths objs = {0};
-    for (size_t i = 0; i < all_sources.count; ++i) {
-        const char *src = all_sources.items[i];
-        const char *stem = sanitize_path_for_obj(src);
-        const char *obj = nob_temp_sprintf("build/obj/unit/%s.o", stem);
-        nob_da_append(&objs, obj);
-        const char *file_cflags = cstr_starts_with(src, "third_party/")
-            ? nob_temp_sprintf("%s -w", cflags)
-            : cflags;
-        if (!compile_obj(cc, file_cflags, includes, src, obj)) return 1;
+    if (!compile_exe(
+            cc,
+            coverage
+                ? "-std=c99 -Wall -Wextra -O0 -g --coverage -D_POSIX_C_SOURCE=200809L"
+                : "-std=c99 -Wall -Wextra -O0 -g -D_POSIX_C_SOURCE=200809L",
+            "-I tests/unit/test_runner",
+            "tests/unit/test_runner/test_all.c",
+            "build/tests/unit_tests",
+            "-ldl"
+        )) {
+        return 1;
     }
 
-    Nob_Cmd cmd = {0};
-    {
-        Nob_String_Builder link = {0};
-        nob_sb_appendf(&link, "%s %s ", cc, cflags);
-        sb_append_paths(&link, &objs);
-        nob_sb_append_cstr(&link, "-o build/unit_tests -lm");
-        nob_sb_append_null(&link);
-        nob_cmd_append(&cmd, "sh", "-lc", link.items);
+    if (!build_tool(cc, "tests/unit/core/camera/build_camera.c", "build/tests/bin/build_camera")) return 1;
+    if (!run_tool("build/tests/bin/build_camera", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/core/cmp_print/build_cmp_print.c", "build/tests/bin/build_cmp_print")) return 1;
+    if (!run_tool("build/tests/bin/build_cmp_print", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/asset/bump_alloc/build_bump_alloc.c", "build/tests/bin/build_bump_alloc")) return 1;
+    if (!run_tool("build/tests/bin/build_bump_alloc", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/asset/build_asset.c", "build/tests/bin/build_asset")) return 1;
+    if (!run_tool("build/tests/bin/build_asset", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/core/toast/build_toast.c", "build/tests/bin/build_toast")) return 1;
+    if (!run_tool("build/tests/bin/build_toast", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/core/logger/build_logger.c", "build/tests/bin/build_logger")) return 1;
+    if (!run_tool("build/tests/bin/build_logger", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/core/dynarray/build_dynarray.c", "build/tests/bin/build_dynarray")) return 1;
+    if (!run_tool("build/tests/bin/build_dynarray", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/core/input/build_input.c", "build/tests/bin/build_input")) return 1;
+    if (!run_tool("build/tests/bin/build_input", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/core/debug_hotkeys/build_debug_hotkeys.c", "build/tests/bin/build_debug_hotkeys")) return 1;
+    if (!run_tool("build/tests/bin/build_debug_hotkeys", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/core/engine/build_engine.c", "build/tests/bin/build_engine")) return 1;
+    if (!run_tool("build/tests/bin/build_engine", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/core/time/build_time.c", "build/tests/bin/build_time")) return 1;
+    if (!run_tool("build/tests/bin/build_time", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/core/logger_raylib_adapter/build_logger_raylib_adapter.c", "build/tests/bin/build_logger_raylib_adapter")) return 1;
+    if (!run_tool("build/tests/bin/build_logger_raylib_adapter", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/build_ecs.c", "build/tests/bin/build_ecs")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/core/build_ecs_core.c", "build/tests/bin/build_ecs_core")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_core", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/iterators/build_ecs_iterators.c", "build/tests/bin/build_ecs_iterators")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_iterators", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/anim/build_ecs_anim.c", "build/tests/bin/build_ecs_anim")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_anim", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/physics/build_ecs_physics.c", "build/tests/bin/build_ecs_physics")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_physics", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/system_domains/build_ecs_system_domains.c", "build/tests/bin/build_ecs_system_domains")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_system_domains", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/registration/build_ecs_registration.c", "build/tests/bin/build_ecs_registration")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_registration", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/proximity/build_ecs_proximity.c", "build/tests/bin/build_ecs_proximity")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_proximity", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/liftable/build_ecs_liftable.c", "build/tests/bin/build_ecs_liftable")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_liftable", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/game/build_ecs_game.c", "build/tests/bin/build_ecs_game")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_game", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/ecs/prefab_loading/build_ecs_prefab_loading.c", "build/tests/bin/build_ecs_prefab_loading")) return 1;
+    if (!run_tool("build/tests/bin/build_ecs_prefab_loading", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/prefab/build_prefab.c", "build/tests/bin/build_prefab")) return 1;
+    if (!run_tool("build/tests/bin/build_prefab", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/tiled/build_tiled.c", "build/tests/bin/build_tiled")) return 1;
+    if (!run_tool("build/tests/bin/build_tiled", coverage ? "--coverage" : NULL)) return 1;
+
+    if (!build_tool(cc, "tests/unit/world/build_world.c", "build/tests/bin/build_world")) return 1;
+    if (!run_tool("build/tests/bin/build_world", coverage ? "--coverage" : NULL)) return 1;
+
+    if (run_tests) {
+        Nob_Cmd cmd = {0};
+        nob_cmd_append(&cmd, "build/tests/unit_tests");
         if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;
-        nob_sb_free(link);
     }
-
-    nob_cmd_append(&cmd, "./build/unit_tests");
-    if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;
 
     if (coverage) {
-        // HTML report if lcov is available, otherwise leave raw .gcda/.gcno in build/obj/unit.
         const char *cover_cmd =
             "set -euo pipefail; "
             "exec 2> >(grep -v 'Duplicate specification' >&2); "
             "if command -v lcov >/dev/null 2>&1 && command -v genhtml >/dev/null 2>&1; then "
-            "  lcov --capture --directory build/obj/unit --output-file build/coverage/lcov.info >/dev/null; "
-            "  lcov --remove build/coverage/lcov.info '*/third_party/*' '*/tests/*' --output-file build/coverage/lcov.info.cleaned >/dev/null; "
-            "  genhtml build/coverage/lcov.info.cleaned --output-directory build/coverage/html >/dev/null; "
-            "  echo \"[coverage] HTML: build/coverage/html/index.html\"; "
+            "  lcov --capture --directory build/tests/obj --output-file build/tests/coverage/lcov.info >/dev/null; "
+            "  lcov --remove build/tests/coverage/lcov.info '*/third_party/*' '*/tests/*' --output-file build/tests/coverage/lcov.info.cleaned >/dev/null; "
+            "  genhtml build/tests/coverage/lcov.info.cleaned --output-directory build/tests/coverage/html >/dev/null; "
+            "  echo \"[coverage] HTML: build/tests/coverage/html/index.html\"; "
             "else "
-            "  echo \"[coverage] Install lcov+genhtml to generate HTML (coverage data is in build/obj/unit).\"; "
+            "  echo \"[coverage] Install lcov+genhtml to generate HTML (coverage data is in build/tests/obj).\"; "
             "fi";
+        Nob_Cmd cmd = {0};
         nob_cmd_append(&cmd, "bash", "-lc", cover_cmd);
         if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;
     }

@@ -10,6 +10,8 @@ screenshots/
 /nob
 /nob_test
 /nob_test.*
+/nob_tests
+/nob_tests.*
 
 # Ignore everything in the build folder
 /build
