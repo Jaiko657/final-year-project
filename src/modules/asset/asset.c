@@ -2,6 +2,7 @@
 #include "modules/asset/asset_backend.h"
 #include "modules/asset/asset_backend_internal.h"
 #include "modules/core/logger.h"
+#include "modules/systems/systems_registration.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -119,6 +120,8 @@ void asset_release_texture(tex_handle_t h) {
     if (s->refc == 0) return;
     s->refc--;
 }
+
+SYSTEMS_ADAPT_VOID(sys_asset_collect_adapt, asset_collect)
 
 bool asset_texture_valid(tex_handle_t h) {
     return slot_from_handle(h) != NULL;

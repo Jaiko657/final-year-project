@@ -6,6 +6,8 @@
 #include "modules/ecs/ecs_game.h"
 #include "modules/asset/asset.h"
 #include "modules/systems/systems.h"
+#include "modules/systems/systems_registration.h"
+#include "modules/core/toast.h"
 #include "modules/core/logger.h"
 #include "modules/tiled/tiled.h"
 #include "modules/ecs/ecs_prefab_loading.h"
@@ -255,17 +257,8 @@ static void sys_interact_from_proximity_impl(const input_t* in)
 }
 
 // ===== System adapters + registration =====
-static void sys_pickups_adapt(float dt, const input_t* in)
-{
-    (void)dt; (void)in;
-    sys_pickups_from_proximity_impl();
-}
-
-static void sys_interact_adapt(float dt, const input_t* in)
-{
-    (void)dt;
-    sys_interact_from_proximity_impl(in);
-}
+SYSTEMS_ADAPT_VOID(sys_pickups_adapt, sys_pickups_from_proximity_impl)
+SYSTEMS_ADAPT_INPUT(sys_interact_adapt, sys_interact_from_proximity_impl)
 
 void ecs_register_game_systems(void)
 {

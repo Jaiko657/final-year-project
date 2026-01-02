@@ -61,10 +61,9 @@ typedef struct {
 typedef enum { BILLBOARD_INACTIVE = 0, BILLBOARD_ACTIVE = 1 } billboard_state_t;
 
 typedef enum {
-    LIFTABLE_STATE_ONGROUND = 0,
-    LIFTABLE_STATE_CARRIED  = 1,
-    LIFTABLE_STATE_THROWN   = 2
-} liftable_state_t;
+    GRAV_GUN_STATE_FREE = 0,
+    GRAV_GUN_STATE_HELD = 1
+} grav_gun_state_t;
 
 // ====== Lifecycle / config ======
 void ecs_init(void);
@@ -96,9 +95,8 @@ void cmp_add_follow   (ecs_entity_t e, ecs_entity_t target, float desired_distan
 void cmp_add_trigger  (ecs_entity_t e, float pad, uint32_t target_mask);
 void cmp_add_billboard(ecs_entity_t e, const char* text, float y_off, float linger, billboard_state_t state);
 void cmp_add_size     (ecs_entity_t e, float hx, float hy); // AABB half-extents
-void cmp_add_liftable (ecs_entity_t e);
+void cmp_add_grav_gun (ecs_entity_t e);
 void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass);
-void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type);
 
 // ====== HUD helpers ======
 ecs_count_result_t ecs_count_entities(const uint32_t* masks, int num_masks);

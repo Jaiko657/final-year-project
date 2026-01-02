@@ -60,8 +60,8 @@ typedef struct prefab_built_entity_t {
     bool has_col;
     prefab_cmp_col_t col;
 
-    bool has_liftable;
-    prefab_cmp_liftable_t liftable;
+    bool has_grav_gun;
+    prefab_cmp_grav_gun_t grav_gun;
 
     bool has_trigger;
     prefab_cmp_trigger_t trigger;
@@ -106,7 +106,7 @@ static prefab_built_entity_t prefab_build_entity_components(const prefab_t* pref
             case ENUM_VENDOR:    built.has_vendor = prefab_cmp_vendor_build(comp, obj, &built.vendor); break;
             case ENUM_FOLLOW:    built.has_follow = prefab_cmp_follow_build(comp, obj, &built.follow); break;
             case ENUM_COL:       built.has_col = prefab_cmp_col_build(comp, obj, &built.col); break;
-            case ENUM_LIFTABLE:  built.has_liftable = prefab_cmp_liftable_build(comp, obj, &built.liftable); break;
+            case ENUM_GRAV_GUN:  built.has_grav_gun = prefab_cmp_grav_gun_build(comp, obj, &built.grav_gun); break;
             case ENUM_TRIGGER:   built.has_trigger = prefab_cmp_trigger_build(comp, obj, &built.trigger); break;
             case ENUM_BILLBOARD: built.has_billboard = prefab_cmp_billboard_build(comp, obj, &built.billboard); break;
             case ENUM_DOOR:
@@ -198,19 +198,17 @@ static void prefab_add_to_ecs(ecs_entity_t e, const prefab_built_entity_t* built
         }
     }
 
-    if (built->has_liftable) {
-        cmp_add_liftable(e);
+    if (built->has_grav_gun) {
+        cmp_add_grav_gun(e);
         int idx = ent_index_checked(e);
-        if (idx >= 0 && (ecs_mask[idx] & CMP_LIFTABLE)) {
-            if (built->liftable.has_carry_height) cmp_liftable[idx].carry_height = built->liftable.carry_height;
-            if (built->liftable.has_carry_distance) cmp_liftable[idx].carry_distance = built->liftable.carry_distance;
-            if (built->liftable.has_pickup_distance) cmp_liftable[idx].pickup_distance = built->liftable.pickup_distance;
-            if (built->liftable.has_pickup_radius) cmp_liftable[idx].pickup_radius = built->liftable.pickup_radius;
-            if (built->liftable.has_throw_speed) cmp_liftable[idx].throw_speed = built->liftable.throw_speed;
-            if (built->liftable.has_throw_vertical_speed) cmp_liftable[idx].throw_vertical_speed = built->liftable.throw_vertical_speed;
-            if (built->liftable.has_gravity) cmp_liftable[idx].gravity = built->liftable.gravity;
-            if (built->liftable.has_air_friction) cmp_liftable[idx].air_friction = built->liftable.air_friction;
-            if (built->liftable.has_bounce_damping) cmp_liftable[idx].bounce_damping = built->liftable.bounce_damping;
+        if (idx >= 0 && (ecs_mask[idx] & CMP_GRAV_GUN)) {
+            if (built->grav_gun.has_pickup_distance) cmp_grav_gun[idx].pickup_distance = built->grav_gun.pickup_distance;
+            if (built->grav_gun.has_pickup_radius) cmp_grav_gun[idx].pickup_radius = built->grav_gun.pickup_radius;
+            if (built->grav_gun.has_max_hold_distance) cmp_grav_gun[idx].max_hold_distance = built->grav_gun.max_hold_distance;
+            if (built->grav_gun.has_breakoff_distance) cmp_grav_gun[idx].breakoff_distance = built->grav_gun.breakoff_distance;
+            if (built->grav_gun.has_follow_gain) cmp_grav_gun[idx].follow_gain = built->grav_gun.follow_gain;
+            if (built->grav_gun.has_max_speed) cmp_grav_gun[idx].max_speed = built->grav_gun.max_speed;
+            if (built->grav_gun.has_damping) cmp_grav_gun[idx].damping = built->grav_gun.damping;
         }
     }
 

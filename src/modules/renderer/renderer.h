@@ -6,8 +6,8 @@
 bool renderer_init(int width, int height, const char* title, int target_fps);
 bool renderer_bind_world_map(void);
 void renderer_unload_tiled_map(void);
-void renderer_next_frame(void);
 void renderer_shutdown(void);
+bool renderer_screen_to_world(float screen_x, float screen_y, float* out_x, float* out_y);
 
 #if DEBUG_BUILD
 bool renderer_toggle_ecs_colliders(void);

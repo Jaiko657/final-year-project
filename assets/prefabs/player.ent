@@ -8,6 +8,7 @@
   <component type="COL" hx="8" hy="8"/>
   <component type="PHYS_BODY">
     <property name="type" value="dynamic"/>
+    <property name="mass" value="1.0"/>
   </component>
   <component type="TRIGGER" pad="0" target_mask="ITEM|COL"/>
   <component type="ANIM" frame_w="16" frame_h="16" fps="6">

@@ -44,10 +44,10 @@ static uint16_t subtile_full_mask(void)
 static uint16_t flip_mask_h(uint16_t mask)
 {
     uint16_t out = 0;
-    for (int y = 0; y < 4; ++y) {
-        for (int x = 0; x < 4; ++x) {
-            int src_bit = y * 4 + x;
-            int dst_bit = y * 4 + (3 - x);
+    for (int y = 0; y < WORLD_SUBTILES_PER_TILE; ++y) {
+        for (int x = 0; x < WORLD_SUBTILES_PER_TILE; ++x) {
+            int src_bit = y * WORLD_SUBTILES_PER_TILE + x;
+            int dst_bit = y * WORLD_SUBTILES_PER_TILE + (WORLD_SUBTILES_PER_TILE - 1 - x);
             if (mask & (uint16_t)(1u << src_bit)) {
                 out |= (uint16_t)(1u << dst_bit);
             }
@@ -59,10 +59,10 @@ static uint16_t flip_mask_h(uint16_t mask)
 static uint16_t flip_mask_v(uint16_t mask)
 {
     uint16_t out = 0;
-    for (int y = 0; y < 4; ++y) {
-        for (int x = 0; x < 4; ++x) {
-            int src_bit = y * 4 + x;
-            int dst_bit = (3 - y) * 4 + x;
+    for (int y = 0; y < WORLD_SUBTILES_PER_TILE; ++y) {
+        for (int x = 0; x < WORLD_SUBTILES_PER_TILE; ++x) {
+            int src_bit = y * WORLD_SUBTILES_PER_TILE + x;
+            int dst_bit = (WORLD_SUBTILES_PER_TILE - 1 - y) * WORLD_SUBTILES_PER_TILE + x;
             if (mask & (uint16_t)(1u << src_bit)) {
                 out |= (uint16_t)(1u << dst_bit);
             }

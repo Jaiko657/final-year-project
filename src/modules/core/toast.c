@@ -1,4 +1,5 @@
 #include "modules/core/toast.h"
+#include "modules/systems/systems_registration.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -39,3 +40,5 @@ const char* ecs_toast_get_text(void)
 {
     return ui_toast_text;
 }
+
+SYSTEMS_ADAPT_DT(sys_toast_update_adapt, ui_toast_update)

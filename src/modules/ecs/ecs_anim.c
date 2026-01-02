@@ -2,14 +2,18 @@
 #include "modules/core/input.h"
 #include "modules/core/logger.h"
 #include "modules/asset/bump_alloc.h"
+#include "modules/systems/systems_registration.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 
 // Animation data is flattened into a bump allocator so the per-frame systems
 // touch a single contiguous memory region.
+#ifndef ECS_ANIM_ARENA_BYTES
+#define ECS_ANIM_ARENA_BYTES (128 * 1024)
+#endif
 static bump_alloc_t g_anim_arena;
-static const size_t ANIM_ARENA_BYTES = 128 * 1024;
+static const size_t ANIM_ARENA_BYTES = ECS_ANIM_ARENA_BYTES;
 
 typedef struct {
     uint64_t hash;
@@ -189,7 +193,11 @@ void cmp_add_anim(
     int* offs = bump_alloc_type(&g_anim_arena, int, (size_t)use_anims);
     anim_frame_coord_t* flat = bump_alloc_type(&g_anim_arena, anim_frame_coord_t, (size_t)total_frames);
     if (!fp || !offs || (total_frames > 0 && !flat)) {
-        LOGC(LOGCAT_ECS, LOG_LVL_ERROR, "anim: arena out of space for %d anims (%d frames)", use_anims, total_frames);
+        LOGC(LOGCAT_ECS, LOG_LVL_ERROR,
+             "anim: arena out of space for %d anims (%d frames), capacity=%zu bytes",
+             use_anims,
+             total_frames,
+             ANIM_ARENA_BYTES);
         return;
     }
 
@@ -332,14 +340,5 @@ static void sys_anim_sprite_impl(float dt)
 }
 
 // Public adapters (used by ecs_core.c)
-void sys_anim_controller_adapt(float dt, const input_t* in)
-{
-    (void)dt; (void)in;
-    sys_anim_controller_impl();
-}
-
-void sys_anim_sprite_adapt(float dt, const input_t* in)
-{
-    (void)in;
-    sys_anim_sprite_impl(dt);
-}
+SYSTEMS_ADAPT_VOID(sys_anim_controller_adapt, sys_anim_controller_impl)
+SYSTEMS_ADAPT_DT(sys_anim_sprite_adapt, sys_anim_sprite_impl)

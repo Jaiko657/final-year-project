@@ -1,5 +1,6 @@
 #include "modules/ecs/ecs_internal.h"
 #include "modules/core/input.h"
+#include "modules/systems/systems_registration.h"
 #include "modules/ecs/ecs_proximity.h"
 #include "modules/common/dynarray.h"
 #include <math.h>
@@ -128,14 +129,5 @@ static void sys_billboards_impl(float dt)
 }
 
 // Public adapters (used by ecs_core.c)
-void sys_prox_build_adapt(float dt, const input_t* in)
-{
-    (void)dt; (void)in;
-    sys_proximity_build_view_impl();
-}
-
-void sys_billboards_adapt(float dt, const input_t* in)
-{
-    (void)in;
-    sys_billboards_impl(dt);
-}
+SYSTEMS_ADAPT_VOID(sys_prox_build_adapt, sys_proximity_build_view_impl)
+SYSTEMS_ADAPT_DT(sys_billboards_adapt, sys_billboards_impl)

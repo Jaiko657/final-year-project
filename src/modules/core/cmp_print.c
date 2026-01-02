@@ -37,13 +37,12 @@ static const char* billboard_state_short(billboard_state_t s)
     }
 }
 
-static const char* liftable_state_short(liftable_state_t s)
+static const char* grav_gun_state_short(grav_gun_state_t s)
 {
     switch (s) {
-        case LIFTABLE_STATE_ONGROUND: return "GROUND";
-        case LIFTABLE_STATE_CARRIED:  return "CARRIED";
-        case LIFTABLE_STATE_THROWN:   return "THROWN";
-        default:                      return "?";
+        case GRAV_GUN_STATE_FREE: return "FREE";
+        case GRAV_GUN_STATE_HELD: return "HELD";
+        default:                  return "?";
     }
 }
 
@@ -238,24 +237,25 @@ void cmp_print_collider(const char* indent, const cmp_collider_t* c)
     LOGC(LOGCAT_ECS, LOG_LVL_INFO, "%sCOL(hx=%.2f, hy=%.2f)", prefix, c->hx, c->hy);
 }
 
-void cmp_print_liftable(const char* indent, const cmp_liftable_t* l)
+void cmp_print_grav_gun(const char* indent, const cmp_grav_gun_t* g)
 {
     const char* prefix = indent_or_empty(indent);
-    if (!l) {
-        LOGC(LOGCAT_ECS, LOG_LVL_INFO, "%sLIFTABLE(null)", prefix);
+    if (!g) {
+        LOGC(LOGCAT_ECS, LOG_LVL_INFO, "%sGRAV_GUN(null)", prefix);
         return;
     }
     LOGC(
         LOGCAT_ECS,
         LOG_LVL_INFO,
-        "%sLIFTABLE(state=%s, carrier=%u, h=%.1f, vz=%.1f, v=(%.1f,%.1f))",
+        "%sGRAV_GUN(state=%s, holder=%u, follow=%.2f, max=%.1f, break=%.1f, hold_v=(%.1f,%.1f))",
         prefix,
-        liftable_state_short(l->state),
-        l->carrier.idx,
-        l->height,
-        l->vertical_velocity,
-        l->vx,
-        l->vy
+        grav_gun_state_short(g->state),
+        g->holder.idx,
+        g->follow_gain,
+        g->max_speed,
+        g->breakoff_distance,
+        g->hold_vel_x,
+        g->hold_vel_y
     );
 }
 

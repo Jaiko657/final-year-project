@@ -12,12 +12,6 @@
 #define XML_LIB_DIR            "third_party/xml.c/build"
 #define XML_LIB_NAME           "libxml.a"
 
-static bool sync_assets(void) {
-	    return true; // I realised i can set working directory but left this as im not sold yet
-	    if (!nob_mkdir_if_not_exists("build")) return false;
-	    return nob_copy_directory_recursively("assets", "build/assets");
-}
-
 static bool cstr_ends_with(const char *s, const char *suffix)
 {
     if (!s || !suffix) return false;
@@ -175,7 +169,6 @@ int main(int argc, char **argv) {
 	        nob_cmd_append(&cmd, "sh", "-lc", cmdline);
 
 	        if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;
-	        if (!sync_assets()) return 1;
 	        nob_sb_free(sb);
 	        return 0;
 	    }
@@ -271,7 +264,6 @@ int main(int argc, char **argv) {
 #endif
 
 	    if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;
-	    if (!sync_assets()) return 1;
 
     return 0;
 }

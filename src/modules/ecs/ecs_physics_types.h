@@ -23,3 +23,7 @@ typedef struct {
     // and is participating in the physics-lite step.
     bool created;
 } cmp_phys_body_t;
+
+enum {
+    PHYS_CAT_PLAYER = 1u << 0
+};

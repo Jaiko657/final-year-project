@@ -1,4 +1,5 @@
 #include "modules/core/camera.h"
+#include "modules/systems/systems_registration.h"
 #include "modules/core/logger.h"
 
 #include <math.h>
@@ -114,3 +115,5 @@ camera_view_t camera_get_view(void) {
     };
     return view;
 }
+
+SYSTEMS_ADAPT_DT(sys_camera_tick_adapt, camera_tick)

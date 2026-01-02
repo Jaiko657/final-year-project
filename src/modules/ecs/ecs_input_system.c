@@ -1,5 +1,6 @@
 #include "modules/ecs/ecs_internal.h"
 #include "modules/core/input.h"
+#include "modules/systems/systems_registration.h"
 
 static facing_t dir_from_input(const input_t* in, facing_t fallback)
 {
@@ -70,3 +71,5 @@ void sys_input(float dt, const input_t* in)
         }
     }
 }
+
+SYSTEMS_ADAPT_BOTH(sys_input_adapt, sys_input)

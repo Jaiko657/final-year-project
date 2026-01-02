@@ -19,7 +19,7 @@ bool prefab_cmp_phys_body_build(const prefab_component_t* comp, const tiled_obje
 {
     if (!out_body) return false;
     PhysicsType type = parse_phys_type(prefab_combined_value(comp, obj, "type"), PHYS_DYNAMIC);
-    float mass = 1.0f;
+    float mass = 0.0f;
     prefab_parse_float(prefab_combined_value(comp, obj, "mass"), &mass);
     *out_body = (prefab_cmp_phys_body_t){ type, mass };
     return true;

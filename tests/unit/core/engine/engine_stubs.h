@@ -33,7 +33,6 @@ extern int g_input_for_tick_calls;
 extern int g_systems_tick_calls;
 extern int g_systems_present_calls;
 extern int g_systems_registration_init_calls;
-extern int g_renderer_next_frame_calls;
 extern int g_platform_should_close_calls;
 
 extern int g_renderer_init_width;

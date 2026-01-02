@@ -87,7 +87,8 @@ int main(int argc, char **argv)
 
     Nob_File_Paths sources = {0};
     nob_da_append(&sources, "third_party/Unity/src/unity.c");
-    nob_da_append(&sources, "src/modules/ecs/ecs_liftable.c");
+    nob_da_append(&sources, "src/modules/ecs/ecs_gravity_gun.c");
+    nob_da_append(&sources, "src/modules/core/effects.c");
     nob_da_append(&sources, "tests/unit/ecs/liftable/ecs_liftable_stubs.c");
     nob_da_append(&sources, "tests/unit/ecs/liftable/test_ecs_liftable.c");
     nob_da_append(&sources, runner_path);

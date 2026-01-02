@@ -1,6 +1,9 @@
 #include "modules/tiled/tiled_internal.h"
+#include "modules/core/logger.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,13 +32,11 @@ static bool tiled_xml_string_equals(struct xml_string *xs, const char *lit) {
     size_t len = xml_string_length(xs);
     size_t want = strlen(lit);
     if (len != want) return false;
-    char *tmp = (char *)malloc(len + 1);
-    if (!tmp) return false;
+    if (len == 0) return true;
+    char tmp[len + 1];
     xml_string_copy(xs, (uint8_t *)tmp, len);
     tmp[len] = '\0';
-    bool eq = memcmp(tmp, lit, len) == 0;
-    free(tmp);
-    return eq;
+    return memcmp(tmp, lit, len) == 0;
 }
 
 char *tiled_node_attr_strdup(struct xml_node *node, const char *name) {
@@ -53,7 +54,16 @@ char *tiled_node_attr_strdup(struct xml_node *node, const char *name) {
 bool tiled_node_attr_int(struct xml_node *node, const char *name, int *out) {
     char *val = tiled_node_attr_strdup(node, name);
     if (!val) return false;
-    *out = atoi(val);
+    errno = 0;
+    char *end = NULL;
+    long parsed = strtol(val, &end, 10);
+    bool ok = (end && end != val && *end == '\0' && errno != ERANGE && parsed >= INT_MIN && parsed <= INT_MAX);
+    if (!ok) {
+        LOGC(LOGCAT_TILE, LOG_LVL_WARN, "tiled: invalid int for attr '%s': '%s'", name ? name : "(null)", val);
+        free(val);
+        return false;
+    }
+    if (out) *out = (int)parsed;
     free(val);
     return true;
 }

@@ -30,3 +30,32 @@ Vector2 GetScreenToWorld2D(Vector2 position, Camera2D camera)
     (void)camera;
     return position;
 }
+
+bool IsKeyPressed(int key)
+{
+    (void)key;
+    return false;
+}
+
+bool DirectoryExists(const char* dir)
+{
+    (void)dir;
+    return true;
+}
+
+bool MakeDirectory(const char* dir)
+{
+    (void)dir;
+    return true;
+}
+
+bool FileExists(const char* fileName)
+{
+    (void)fileName;
+    return false;
+}
+
+void TakeScreenshot(const char* fileName)
+{
+    (void)fileName;
+}

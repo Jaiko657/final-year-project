@@ -38,9 +38,9 @@ void test_ecs_create_destroy_reuses_slot_and_gen(void)
 void test_ecs_init_registers_systems_and_tick_runs_phases(void)
 {
 #if DEBUG_BUILD
-    const int expected_registers = 15;
+    const int expected_registers = 24;
 #else
-    const int expected_registers = 14;
+    const int expected_registers = 23;
 #endif
     TEST_ASSERT_EQUAL_INT(expected_registers, g_ecs_register_system_calls);
 
@@ -62,6 +62,7 @@ void test_ecs_init_registers_systems_and_tick_runs_phases(void)
 
     systems_present(0.1f);
     TEST_ASSERT_EQUAL_INT(1, g_ecs_phase_calls[PHASE_PRESENT]);
+    TEST_ASSERT_EQUAL_INT(1, g_ecs_phase_calls[PHASE_RENDER]);
 }
 
 void test_ecs_get_player_position_and_get_position(void)
@@ -122,17 +123,17 @@ void test_cmp_add_billboard_warns_without_trigger(void)
     TEST_ASSERT_EQUAL_INT(1, g_log_warn_calls);
 }
 
-void test_cmp_add_liftable_sets_defaults(void)
+void test_cmp_add_grav_gun_initializes_empty(void)
 {
     ecs_entity_t e = ecs_create();
-    cmp_add_liftable(e);
+    cmp_add_grav_gun(e);
 
     int idx = ent_index_checked(e);
     TEST_ASSERT_TRUE(idx >= 0);
-    TEST_ASSERT_EQUAL_INT(LIFTABLE_STATE_ONGROUND, cmp_liftable[idx].state);
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 12.0f, cmp_liftable[idx].carry_distance);
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 18.0f, cmp_liftable[idx].carry_height);
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 220.0f, cmp_liftable[idx].throw_speed);
+    TEST_ASSERT_EQUAL_INT(GRAV_GUN_STATE_FREE, cmp_grav_gun[idx].state);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, cmp_grav_gun[idx].pickup_distance);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, cmp_grav_gun[idx].pickup_radius);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, cmp_grav_gun[idx].max_hold_distance);
 }
 
 void test_ecs_destroy_releases_resources(void)
@@ -242,7 +243,7 @@ void test_helpers_validate_handles_and_clampf(void)
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 3.0f, clampf(5.0f, 1.0f, 3.0f));
 }
 
-void test_cmp_add_trigger_and_phys_body_default(void)
+void test_cmp_add_trigger_and_phys_body(void)
 {
     ecs_entity_t e = ecs_create();
     cmp_add_trigger(e, 2.5f, CMP_PLAYER);
@@ -255,7 +256,7 @@ void test_cmp_add_trigger_and_phys_body_default(void)
 
     cmp_add_position(e, 1.0f, 1.0f);
     cmp_add_size(e, 2.0f, 3.0f);
-    cmp_add_phys_body_default(e, PHYS_DYNAMIC);
+    cmp_add_phys_body(e, PHYS_DYNAMIC, 1.0f);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, cmp_phys_body[idx].mass);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, cmp_phys_body[idx].inv_mass);
 }

@@ -1,6 +1,5 @@
 #include "modules/tiled/tiled.h"
 #include "modules/asset/asset.h"
-#include "modules/asset/asset_renderer_internal.h"
 
 #include <stdlib.h>
 

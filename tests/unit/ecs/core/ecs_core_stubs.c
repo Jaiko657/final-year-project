@@ -141,6 +141,7 @@ void systems_tick(float dt, const input_t* in)
 void systems_present(float frame_dt)
 {
     systems_run_phase(PHASE_PRESENT, frame_dt, NULL);
+    systems_run_phase(PHASE_RENDER, frame_dt, NULL);
 }
 
 void systems_registration_init(void)
@@ -150,24 +151,33 @@ void systems_registration_init(void)
     ecs_register_phys_body_create_hook(ecs_phys_body_create_for_entity);
     ecs_register_render_component_hooks();
     ecs_register_door_component_hooks();
+    systems_register(PHASE_INPUT,    -100, NULL, "effects_tick_begin");
     systems_register(PHASE_INPUT,    0,   NULL, "input");
-    systems_register(PHASE_INPUT,    50,  NULL, "liftable_input");
+    systems_register(PHASE_INPUT,    50,  NULL, "grav_gun_input");
 
     systems_register(PHASE_PHYSICS,  50,  NULL, "follow_ai");
-    systems_register(PHASE_PHYSICS,  90,  NULL, "liftable_motion");
+    systems_register(PHASE_PHYSICS,  90,  NULL, "grav_gun_motion");
     systems_register(PHASE_SIM_PRE,  200, NULL, "animation_controller");
 
     systems_register(PHASE_PHYSICS,  100, NULL, "physics");
 
     systems_register(PHASE_SIM_POST, 100, NULL, "proximity_view");
     systems_register(PHASE_SIM_POST, 200, NULL, "billboards");
+    systems_register(PHASE_SIM_POST, 250, NULL, "grav_gun_fx");
     systems_register(PHASE_SIM_POST, 900, NULL, "world_apply_edits");
 
     systems_register(PHASE_PRESENT,   10,  NULL, "toast_update");
     systems_register(PHASE_PRESENT,   20,  NULL, "camera_tick");
     systems_register(PHASE_PRESENT,  100, NULL, "sprite_anim");
-    systems_register(PHASE_PRESENT, 1000, NULL, "renderer_present");
-    systems_register(PHASE_PRESENT, 1100, NULL, "asset_collect");
+    systems_register(PHASE_RENDER,     10, NULL, "render_begin");
+    systems_register(PHASE_RENDER,     20, NULL, "render_world_base");
+    systems_register(PHASE_RENDER,     30, NULL, "render_world_fx");
+    systems_register(PHASE_RENDER,     40, NULL, "render_world_sprites");
+    systems_register(PHASE_RENDER,     50, NULL, "render_world_overlays");
+    systems_register(PHASE_RENDER,     60, NULL, "render_world_end");
+    systems_register(PHASE_RENDER,     70, NULL, "render_ui");
+    systems_register(PHASE_RENDER,     80, NULL, "render_end");
+    systems_register(PHASE_RENDER,   1000, NULL, "asset_collect");
 
 #if DEBUG_BUILD
     systems_register(PHASE_DEBUG,    100, NULL, "debug_binds");
@@ -203,13 +213,13 @@ void sys_billboards_adapt(float dt, const input_t* in)
     (void)in;
 }
 
-void sys_liftable_input_adapt(float dt, const input_t* in)
+void sys_grav_gun_input_adapt(float dt, const input_t* in)
 {
     (void)dt;
     (void)in;
 }
 
-void sys_liftable_motion_adapt(float dt, const input_t* in)
+void sys_grav_gun_motion_adapt(float dt, const input_t* in)
 {
     (void)dt;
     (void)in;

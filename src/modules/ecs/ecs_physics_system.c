@@ -1,6 +1,7 @@
 #include "modules/ecs/ecs_internal.h"
 #include "modules/ecs/ecs_physics.h"
 #include "modules/world/world.h"
+#include "modules/systems/systems_registration.h"
 #include <math.h>
 
 static void resolve_tile_penetration(int i)
@@ -8,7 +9,6 @@ static void resolve_tile_penetration(int i)
     const uint32_t req = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
     if ((ecs_mask[i] & req) != req) return;
     if (!cmp_phys_body[i].created) return;
-    if ((ecs_mask[i] & CMP_LIFTABLE) && cmp_liftable[i].state != LIFTABLE_STATE_ONGROUND) return;
 
     float hx = cmp_col[i].hx;
     float hy = cmp_col[i].hy;
@@ -51,12 +51,6 @@ void sys_physics_integrate_impl(float dt)
         cmp_velocity_t*  v  = &cmp_vel[e];
         cmp_phys_body_t* pb = &cmp_phys_body[e];
         if (!pb->created) continue;
-        if ((ecs_mask[e] & CMP_LIFTABLE) && cmp_liftable[e].state != LIFTABLE_STATE_ONGROUND) {
-            // Liftables handle their own airborne motion and disable collisions while carried/thrown.
-            v->x = 0.0f;
-            v->y = 0.0f;
-            continue;
-        }
 
         switch (pb->type) {
             case PHYS_DYNAMIC:
@@ -106,14 +100,12 @@ void sys_physics_integrate_impl(float dt)
             const uint32_t reqA = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
             if ((ecs_mask[a] & reqA) != reqA) continue;
             if (!cmp_phys_body[a].created) continue;
-            if ((ecs_mask[a] & CMP_LIFTABLE) && cmp_liftable[a].state != LIFTABLE_STATE_ONGROUND) continue;
 
             for (int b = a + 1; b < ECS_MAX_ENTITIES; ++b) {
                 if (!ecs_alive_idx(b)) continue;
                 const uint32_t reqB = (CMP_POS | CMP_COL | CMP_PHYS_BODY);
                 if ((ecs_mask[b] & reqB) != reqB) continue;
                 if (!cmp_phys_body[b].created) continue;
-                if ((ecs_mask[b] & CMP_LIFTABLE) && cmp_liftable[b].state != LIFTABLE_STATE_ONGROUND) continue;
 
                 const cmp_phys_body_t* pa = &cmp_phys_body[a];
                 const cmp_phys_body_t* pb = &cmp_phys_body[b];
@@ -185,3 +177,5 @@ void sys_physics_integrate_impl(float dt)
         }
     }
 }
+
+SYSTEMS_ADAPT_DT(sys_physics_adapt, sys_physics_integrate_impl)

@@ -22,7 +22,17 @@ void cmp_add_sprite_handle(ecs_entity_t e, tex_handle_t h, rectf src, float ox, 
     int i = ent_index_checked(e);
     if (i < 0) return;
     if (asset_texture_valid(h)) asset_addref_texture(h);
-    cmp_spr[i] = (cmp_sprite_t){ h, src, ox, oy };
+    cmp_spr[i] = (cmp_sprite_t){
+        .tex = h,
+        .src = src,
+        .ox = ox,
+        .oy = oy,
+        .fx = {
+            .highlighted = false,
+            .highlight_color = (colorf){ 0.470588f, 0.784314f, 1.0f, 1.0f },
+            .highlight_thickness = 1,
+        },
+    };
     ecs_mask[i] |= CMP_SPR;
 }
 

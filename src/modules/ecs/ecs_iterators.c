@@ -24,6 +24,9 @@ bool ecs_sprites_next(ecs_sprite_iter_t* it, ecs_sprite_view_t* out)
             .y   = cmp_pos[i].y,
             .ox  = cmp_spr[i].ox,
             .oy  = cmp_spr[i].oy,
+            .highlighted = cmp_spr[i].fx.highlighted,
+            .highlight_color = cmp_spr[i].fx.highlight_color,
+            .highlight_thickness = cmp_spr[i].fx.highlight_thickness,
         };
         return true;
     }

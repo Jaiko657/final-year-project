@@ -9,6 +9,9 @@ typedef struct {
     rectf src;
     float x, y;   // world position
     float ox, oy; // origin
+    bool highlighted;
+    colorf highlight_color;
+    int highlight_thickness;
 } ecs_sprite_view_t;
 
 typedef struct {

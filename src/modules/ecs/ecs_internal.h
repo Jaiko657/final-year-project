@@ -19,9 +19,16 @@ typedef struct {
 } cmp_follow_t;
 
 typedef struct {
+    bool highlighted;
+    colorf highlight_color;
+    int highlight_thickness;
+} cmp_sprite_fx_t;
+
+typedef struct {
     tex_handle_t tex;
     rectf src;
     float ox, oy;
+    cmp_sprite_fx_t fx;
 } cmp_sprite_t;
 
 typedef struct {
@@ -55,22 +62,22 @@ typedef struct {
 } cmp_billboard_t;
 
 typedef struct {
-    liftable_state_t state;
-    ecs_entity_t carrier;
-    float height;
-    float vertical_velocity;
-    float carry_height;
-    float carry_distance;
+    grav_gun_state_t state;
+    ecs_entity_t holder;
     float pickup_distance;
     float pickup_radius;
-    float throw_speed;
-    float throw_vertical_speed;
-    float gravity;
-    float vx;
-    float vy;
-    float air_friction;
-    float bounce_damping;
-} cmp_liftable_t;
+    float max_hold_distance;
+    float breakoff_distance;
+    float follow_gain;
+    float max_speed;
+    float damping;
+    float hold_vel_x;
+    float hold_vel_y;
+    float grab_offset_x;
+    float grab_offset_y;
+    unsigned int saved_mask_bits;
+    bool saved_mask_valid;
+} cmp_grav_gun_t;
 
 typedef struct {
     float prox_radius;
@@ -93,7 +100,7 @@ extern cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
 extern cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
 extern cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
 extern cmp_phys_body_t cmp_phys_body[ECS_MAX_ENTITIES];
-extern cmp_liftable_t  cmp_liftable[ECS_MAX_ENTITIES];
+extern cmp_grav_gun_t  cmp_grav_gun[ECS_MAX_ENTITIES];
 extern cmp_door_t      cmp_door[ECS_MAX_ENTITIES];
 
 // ===== Internal helpers =====
@@ -105,9 +112,6 @@ ecs_entity_t handle_from_index(int i);
 float clampf(float v, float a, float b);
 
 ecs_entity_t find_player_handle(void);
-
-// Toast (TODO: move to engine component when engine exists)
-void ui_toast(float secs, const char* fmt, ...);
 
 // Anim allocator lifecycle (arena-backed animation data)
 void ecs_anim_reset_allocator(void);

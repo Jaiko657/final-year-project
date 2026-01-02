@@ -16,7 +16,7 @@ cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
 cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
 cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
 cmp_phys_body_t cmp_phys_body[ECS_MAX_ENTITIES];
-cmp_liftable_t  cmp_liftable[ECS_MAX_ENTITIES];
+cmp_grav_gun_t  cmp_grav_gun[ECS_MAX_ENTITIES];
 cmp_door_t      cmp_door[ECS_MAX_ENTITIES];
 
 // ========== O(1) create/delete ==========
@@ -32,18 +32,6 @@ enum {
 
 static ecs_component_hook_fn cmp_on_destroy_table[ENUM_COMPONENT_COUNT];
 static ecs_component_hook_fn phys_body_create_hook = NULL;
-
-// Config
-static const float PHYS_DEFAULT_MASS        = 1.0f;
-static const float LIFTABLE_DEFAULT_CARRY_HEIGHT      = 18.0f;
-static const float LIFTABLE_DEFAULT_CARRY_DISTANCE    = 12.0f;
-static const float LIFTABLE_DEFAULT_PICKUP_DISTANCE   = 18.0f;
-static const float LIFTABLE_DEFAULT_PICKUP_RADIUS     = 10.0f;
-static const float LIFTABLE_DEFAULT_THROW_SPEED       = 220.0f;
-static const float LIFTABLE_DEFAULT_THROW_VERTICAL    = 260.0f;
-static const float LIFTABLE_DEFAULT_GRAVITY           = -720.0f;
-static const float LIFTABLE_DEFAULT_AIR_FRICTION      = 3.0f;
-static const float LIFTABLE_DEFAULT_BOUNCE_DAMPING    = 0.45f;
 
 // =============== Helpers ==================
 int ent_index_checked(ecs_entity_t e) {
@@ -178,7 +166,10 @@ static void ecs_finalize_destroy(int idx)
 // =============== Public: entity ===========
 ecs_entity_t ecs_create(void)
 {
-    if (free_top == 0) return ecs_null();
+    if (free_top == 0) {
+        LOGC(LOGCAT_ECS, LOG_LVL_ERROR, "ecs: out of entities (max=%d)", ECS_MAX_ENTITIES);
+        return ecs_null();
+    }
     int idx = free_stack[--free_top];
     uint32_t g = ecs_next_gen[idx];
     if (g == 0) g = 1;
@@ -262,6 +253,9 @@ void cmp_add_player(ecs_entity_t e)
     int i = ent_index_checked(e);
     if (i < 0) return;
     ecs_mask[i] |= CMP_PLAYER;
+    if (ecs_mask[i] & CMP_PHYS_BODY) {
+        cmp_phys_body[i].category_bits |= PHYS_CAT_PLAYER;
+    }
 }
 
 void cmp_add_follow(ecs_entity_t e, ecs_entity_t target, float desired_distance, float max_speed)
@@ -319,28 +313,28 @@ void cmp_add_size(ecs_entity_t e, float hx, float hy)
     try_create_phys_body(i);
 }
 
-void cmp_add_liftable(ecs_entity_t e)
+void cmp_add_grav_gun(ecs_entity_t e)
 {
     int i = ent_index_checked(e);
     if (i < 0) return;
-    cmp_liftable[i] = (cmp_liftable_t){
-        .state              = LIFTABLE_STATE_ONGROUND,
-        .carrier            = ecs_null(),
-        .height             = 0.0f,
-        .vertical_velocity  = 0.0f,
-        .carry_height       = LIFTABLE_DEFAULT_CARRY_HEIGHT,
-        .carry_distance     = LIFTABLE_DEFAULT_CARRY_DISTANCE,
-        .pickup_distance    = LIFTABLE_DEFAULT_PICKUP_DISTANCE,
-        .pickup_radius      = LIFTABLE_DEFAULT_PICKUP_RADIUS,
-        .throw_speed        = LIFTABLE_DEFAULT_THROW_SPEED,
-        .throw_vertical_speed = LIFTABLE_DEFAULT_THROW_VERTICAL,
-        .gravity            = LIFTABLE_DEFAULT_GRAVITY,
-        .vx                 = 0.0f,
-        .vy                 = 0.0f,
-        .air_friction       = LIFTABLE_DEFAULT_AIR_FRICTION,
-        .bounce_damping     = LIFTABLE_DEFAULT_BOUNCE_DAMPING,
+    cmp_grav_gun[i] = (cmp_grav_gun_t){
+        .state              = GRAV_GUN_STATE_FREE,
+        .holder             = ecs_null(),
+        .pickup_distance    = 0.0f,
+        .pickup_radius      = 0.0f,
+        .max_hold_distance  = 0.0f,
+        .breakoff_distance  = 0.0f,
+        .follow_gain        = 0.0f,
+        .max_speed          = 0.0f,
+        .damping            = 0.0f,
+        .hold_vel_x         = 0.0f,
+        .hold_vel_y         = 0.0f,
+        .grab_offset_x      = 0.0f,
+        .grab_offset_y      = 0.0f,
+        .saved_mask_bits    = 0u,
+        .saved_mask_valid   = false
     };
-    ecs_mask[i] |= CMP_LIFTABLE;
+    ecs_mask[i] |= CMP_GRAV_GUN;
 }
 
 void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass)
@@ -355,13 +349,11 @@ void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass)
         .inv_mass = inv_mass,
         .created = false
     };
+    if (ecs_mask[i] & CMP_PLAYER) {
+        cmp_phys_body[i].category_bits |= PHYS_CAT_PLAYER;
+    }
     ecs_mask[i] |= CMP_PHYS_BODY;
     try_create_phys_body(i);
-}
-
-void cmp_add_phys_body_default(ecs_entity_t e, PhysicsType type)
-{
-    cmp_add_phys_body(e, type, PHYS_DEFAULT_MASS);
 }
 
 ecs_count_result_t ecs_count_entities(const uint32_t* masks, int num_masks)

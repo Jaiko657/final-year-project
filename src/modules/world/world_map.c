@@ -1,4 +1,5 @@
 #include "modules/world/world.h"
+#include "modules/systems/systems_registration.h"
 #include "modules/world/world_collision_internal.h"
 #include "modules/world/world_door.h"
 #include "modules/core/logger.h"
@@ -133,3 +134,5 @@ void world_apply_tile_edits(void)
 
     DA_CLEAR(&g_tile_edits);
 }
+
+SYSTEMS_ADAPT_VOID(sys_world_apply_edits_adapt, world_apply_tile_edits)

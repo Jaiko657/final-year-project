@@ -150,5 +150,4 @@ void test_engine_run_processes_one_frame(void)
     TEST_ASSERT_TRUE(g_systems_tick_calls > 0);
     TEST_ASSERT_EQUAL_INT(g_systems_tick_calls, g_input_for_tick_calls);
     TEST_ASSERT_EQUAL_INT(1, g_systems_present_calls);
-    TEST_ASSERT_EQUAL_INT(1, g_renderer_next_frame_calls);
 }

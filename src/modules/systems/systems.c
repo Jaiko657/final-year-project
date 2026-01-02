@@ -1,4 +1,5 @@
 #include "modules/systems/systems.h"
+#include "modules/core/logger.h"
 #include <string.h>
 
 #ifndef ECS_MAX_SYSTEMS_PER_PHASE
@@ -37,9 +38,15 @@ void systems_init(void)
 
 void systems_register(systems_phase_t phase, int order, systems_fn fn, const char* name)
 {
-    if ((int)phase < 0 || phase >= PHASE_COUNT) return;
+    if ((int)phase < 0 || phase >= PHASE_COUNT) {
+        LOGC(LOGCAT("SYS"), LOG_LVL_WARN, "systems: invalid phase %d for %s", phase, name ? name : "(unnamed)");
+        return;
+    }
     size_t* cnt = &g_counts[phase];
-    if (*cnt >= ECS_MAX_SYSTEMS_PER_PHASE) return;
+    if (*cnt >= ECS_MAX_SYSTEMS_PER_PHASE) {
+        LOGC(LOGCAT("SYS"), LOG_LVL_ERROR, "systems: phase %d full; can't register %s", phase, name ? name : "(unnamed)");
+        return;
+    }
 
     g_systems[phase][*cnt] = (sys_rec_t){ name, order, fn };
     (*cnt)++;
@@ -78,4 +85,5 @@ void systems_tick(float dt, const input_t* in)
 void systems_present(float frame_dt)
 {
     systems_run_phase(PHASE_PRESENT, frame_dt, NULL);
+    systems_run_phase(PHASE_RENDER, frame_dt, NULL);
 }

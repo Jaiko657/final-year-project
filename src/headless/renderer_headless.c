@@ -22,18 +22,15 @@ void renderer_unload_tiled_map(void)
 {
 }
 
-void renderer_next_frame(void)
-{
-}
-
 void renderer_shutdown(void)
 {
 }
 
-#if DEBUG_BUILD
-bool renderer_toggle_ecs_colliders(void) { return false; }
-bool renderer_toggle_phys_colliders(void) { return false; }
-bool renderer_toggle_static_colliders(void) { return false; }
-bool renderer_toggle_triggers(void) { return false; }
-bool renderer_toggle_fps_overlay(void) { return false; }
-#endif
+bool renderer_screen_to_world(float screen_x, float screen_y, float* out_x, float* out_y)
+{
+    (void)screen_x;
+    (void)screen_y;
+    if (out_x) *out_x = 0.0f;
+    if (out_y) *out_y = 0.0f;
+    return false;
+}

@@ -41,7 +41,6 @@ int g_world_load_calls = 0;
 int g_world_load_from_tmx_calls = 0;
 int g_input_begin_frame_calls = 0;
 int g_input_for_tick_calls = 0;
-int g_renderer_next_frame_calls = 0;
 int g_platform_should_close_calls = 0;
 int g_systems_tick_calls = 0;
 int g_systems_present_calls = 0;
@@ -97,7 +96,6 @@ void engine_stub_reset(void)
     g_systems_tick_calls = 0;
     g_systems_present_calls = 0;
     g_systems_registration_init_calls = 0;
-    g_renderer_next_frame_calls = 0;
     g_platform_should_close_calls = 0;
 
     g_renderer_init_width = 0;
@@ -311,7 +309,6 @@ void systems_present(float dt)
 {
     (void)dt;
     g_systems_present_calls++;
-    renderer_next_frame();
 }
 
 void systems_registration_init(void)
@@ -323,11 +320,6 @@ void systems_registration_init(void)
 void camera_tick(float dt)
 {
     (void)dt;
-}
-
-void renderer_next_frame(void)
-{
-    g_renderer_next_frame_calls++;
 }
 
 float time_frame_dt(void)

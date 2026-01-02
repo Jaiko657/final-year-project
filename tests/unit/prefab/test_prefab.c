@@ -88,7 +88,7 @@ void test_prefab_load_parses_all_component_types_and_varieties(void)
         "  <component type=\"VENDOR\" sells=\"hat\" price=\"5\"/>\n"
         "  <component type=\"FOLLOW\" target=\"player\" desired_distance=\"10\" max_speed=\"20\" vision_range=\"30\"/>\n"
         "  <component type=\"COL\" hx=\"8\" hy=\"9\"/>\n"
-        "  <component type=\"LIFTABLE\"><property name=\"bounce_damping\" value=\"0.5\"/></component>\n"
+        "  <component type=\"GRAV_GUN\"><property name=\"pickup_distance\" value=\"40\"/></component>\n"
         "  <component type=\"TRIGGER\" pad=\"0\" target_mask=\"ITEM|COL\"/>\n"
         "  <component type=\"BILLBOARD\" state=\"active\"><property name=\"text\" value=\"hi\"/></component>\n"
         "  <component type=\"DOOR\" proximity_radius=\"12\" door_tiles=\"1,2;3,4\"/>\n"

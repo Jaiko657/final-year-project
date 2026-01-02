@@ -62,8 +62,8 @@ void test_cmp_print_handles_nulls(void)
     cmp_print_collider(NULL, NULL);
     assert_last_log("COL(null)");
 
-    cmp_print_liftable(NULL, NULL);
-    assert_last_log("LIFTABLE(null)");
+    cmp_print_grav_gun(NULL, NULL);
+    assert_last_log("GRAV_GUN(null)");
 
     cmp_print_trigger(NULL, NULL);
     assert_last_log("TRIGGER(null)");
@@ -179,16 +179,16 @@ void test_cmp_print_follow_collider_and_misc(void)
     cmp_print_collider(NULL, &col);
     assert_last_log("COL(hx=2.25, hy=1.75)");
 
-    cmp_liftable_t lift = {0};
-    lift.state = LIFTABLE_STATE_CARRIED;
-    lift.carrier.idx = 9;
-    lift.height = 1.5f;
-    lift.vertical_velocity = -0.5f;
-    lift.vx = 0.25f;
-    lift.vy = -0.75f;
-    cmp_print_liftable(NULL, &lift);
-    TEST_ASSERT_NOT_NULL(strstr(s_last_log, "LIFTABLE(state=CARRIED"));
-    TEST_ASSERT_NOT_NULL(strstr(s_last_log, "carrier=9"));
+    cmp_grav_gun_t grav = {0};
+    grav.state = GRAV_GUN_STATE_HELD;
+    grav.holder.idx = 9;
+    grav.follow_gain = 2.0f;
+    grav.max_speed = 50.0f;
+    grav.hold_vel_x = 0.25f;
+    grav.hold_vel_y = -0.75f;
+    cmp_print_grav_gun(NULL, &grav);
+    TEST_ASSERT_NOT_NULL(strstr(s_last_log, "GRAV_GUN(state=HELD"));
+    TEST_ASSERT_NOT_NULL(strstr(s_last_log, "holder=9"));
     TEST_ASSERT_EQUAL_INT(LOG_LVL_INFO, s_last_level);
 
     cmp_trigger_t trig = { .pad = 1.25f, .target_mask = 0xAABBCCDD };

@@ -82,6 +82,24 @@ void sys_physics_integrate_impl(float dt)
     (void)dt;
 }
 
+void sys_input_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_follow_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_physics_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
 void sys_anim_controller_adapt(float dt, const input_t* in)
 {
     (void)dt;
@@ -106,36 +124,112 @@ void sys_billboards_adapt(float dt, const input_t* in)
     (void)in;
 }
 
-void sys_liftable_input_adapt(float dt, const input_t* in)
+void sys_grav_gun_input_adapt(float dt, const input_t* in)
 {
     (void)dt;
     (void)in;
 }
 
-void sys_liftable_motion_adapt(float dt, const input_t* in)
+void sys_grav_gun_motion_adapt(float dt, const input_t* in)
 {
     (void)dt;
     (void)in;
 }
 
-void ui_toast_update(float dt)
+void sys_render_begin_adapt(float dt, const input_t* in)
 {
     (void)dt;
+    (void)in;
 }
 
-void camera_tick(float dt)
+void sys_render_world_prepare_adapt(float dt, const input_t* in)
 {
     (void)dt;
+    (void)in;
 }
 
-void world_apply_tile_edits(void)
+void sys_render_world_base_adapt(float dt, const input_t* in)
 {
+    (void)dt;
+    (void)in;
 }
 
-void renderer_next_frame(void)
+void sys_render_world_fx_adapt(float dt, const input_t* in)
 {
+    (void)dt;
+    (void)in;
 }
 
-void asset_collect(void)
+void sys_render_world_sprites_adapt(float dt, const input_t* in)
 {
+    (void)dt;
+    (void)in;
 }
+
+void sys_render_world_overlays_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_render_world_end_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_render_ui_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_render_end_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_effects_tick_begin_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_grav_gun_fx_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_toast_update_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_camera_tick_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_world_apply_edits_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+void sys_asset_collect_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+
+#if DEBUG_BUILD
+void sys_debug_binds_adapt(float dt, const input_t* in)
+{
+    (void)dt;
+    (void)in;
+}
+#endif

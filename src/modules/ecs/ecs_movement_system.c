@@ -1,5 +1,6 @@
 #include "modules/ecs/ecs_internal.h"
 #include "modules/world/world.h"
+#include "modules/systems/systems_registration.h"
 #include <math.h>
 #include <stddef.h>
 
@@ -21,14 +22,6 @@ void sys_follow(float dt)
     for (int e = 0; e < ECS_MAX_ENTITIES; ++e) {
         if (!ecs_alive_idx(e)) continue;
         if ((ecs_mask[e] & (CMP_FOLLOW | CMP_POS | CMP_VEL)) != (CMP_FOLLOW | CMP_POS | CMP_VEL)) continue;
-
-        if ((ecs_mask[e] & CMP_LIFTABLE) &&
-            cmp_liftable[e].state != LIFTABLE_STATE_ONGROUND)
-        {
-            cmp_vel[e].x = 0.0f;
-            cmp_vel[e].y = 0.0f;
-            continue;
-        }
 
         cmp_follow_t* f = &cmp_follow[e];
         int target_idx = ent_index_checked(f->target);
@@ -126,3 +119,5 @@ void sys_follow(float dt)
         cmp_vel[e].y = chosen_dy * f->max_speed;
     }
 }
+
+SYSTEMS_ADAPT_DT(sys_follow_adapt, sys_follow)

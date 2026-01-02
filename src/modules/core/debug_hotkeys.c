@@ -9,12 +9,15 @@
 #include "modules/core/camera.h"
 #include "modules/core/logger.h"
 #include "modules/core/cmp_print.h"
+#include "modules/core/debug_hotkeys.h"
 #include "modules/ecs/ecs_internal.h"
 #include "modules/ecs/ecs_game.h"
 #include "modules/core/engine.h"
 #include "modules/world/world.h"
+#include "modules/systems/systems_registration.h"
 #include "raylib.h"
 #include <math.h>
+#include <stdio.h>
 
 void sys_debug_binds(const input_t* in)
 {
@@ -158,8 +161,8 @@ void sys_debug_binds(const input_t* in)
             if (mask & CMP_BILLBOARD) {
                 cmp_print_billboard(cmp_indent, &cmp_billboard[best]);
             }
-            if (mask & CMP_LIFTABLE) {
-                cmp_print_liftable(cmp_indent, &cmp_liftable[best]);
+            if (mask & CMP_GRAV_GUN) {
+                cmp_print_grav_gun(cmp_indent, &cmp_grav_gun[best]);
             }
             if (mask & CMP_DOOR) {
                 cmp_print_door(cmp_indent, &cmp_door[best]);
@@ -175,5 +178,35 @@ void sys_debug_binds(const input_t* in)
         ui_toast(1.0f, "FPS overlay: %s", on ? "on" : "off");
     }
 }
+
+void debug_post_frame(void)
+{
+    if (!IsKeyPressed(KEY_PRINT_SCREEN)) return;
+
+    const char* dir = "screenshots";
+    if (!DirectoryExists(dir)) {
+        if (!MakeDirectory(dir)) {
+            ui_toast(2.0f, "Screenshot failed: can't create '%s'", dir);
+            return;
+        }
+    }
+
+    static int s_next = 0;
+    char path[512];
+    for (int attempt = 0; attempt < 10000; ++attempt) {
+        int idx = s_next + attempt;
+        snprintf(path, sizeof(path), "%s/screenshot_%05d.png", dir, idx);
+        if (FileExists(path)) continue;
+
+        TakeScreenshot(path);
+        s_next = idx + 1;
+        ui_toast(2.0f, "Saved screenshot: %s", path);
+        return;
+    }
+
+    ui_toast(2.0f, "Screenshot failed: no free filename");
+}
+
+SYSTEMS_ADAPT_INPUT(sys_debug_binds_adapt, sys_debug_binds)
 
 #endif // DEBUG_BUILD

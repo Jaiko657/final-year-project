@@ -15,7 +15,7 @@ void cmp_print_inventory(const char* indent, int coins, bool has_hat);
 void cmp_print_vendor(const char* indent, int sells, int price);
 void cmp_print_follow(const char* indent, const cmp_follow_t* f);
 void cmp_print_collider(const char* indent, const cmp_collider_t* c);
-void cmp_print_liftable(const char* indent, const cmp_liftable_t* l);
+void cmp_print_grav_gun(const char* indent, const cmp_grav_gun_t* g);
 void cmp_print_trigger(const char* indent, const cmp_trigger_t* t);
 void cmp_print_billboard(const char* indent, const cmp_billboard_t* b);
 void cmp_print_door(const char* indent, const cmp_door_t* d);

@@ -124,17 +124,15 @@ typedef struct {
 bool prefab_cmp_billboard_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_billboard_t* out_billboard);
 
 typedef struct {
-    bool has_carry_height; float carry_height;
-    bool has_carry_distance; float carry_distance;
     bool has_pickup_distance; float pickup_distance;
     bool has_pickup_radius; float pickup_radius;
-    bool has_throw_speed; float throw_speed;
-    bool has_throw_vertical_speed; float throw_vertical_speed;
-    bool has_gravity; float gravity;
-    bool has_air_friction; float air_friction;
-    bool has_bounce_damping; float bounce_damping;
-} prefab_cmp_liftable_t;
-bool prefab_cmp_liftable_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_liftable_t* out_liftable);
+    bool has_max_hold_distance; float max_hold_distance;
+    bool has_breakoff_distance; float breakoff_distance;
+    bool has_follow_gain; float follow_gain;
+    bool has_max_speed; float max_speed;
+    bool has_damping; float damping;
+} prefab_cmp_grav_gun_t;
+bool prefab_cmp_grav_gun_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_grav_gun_t* out_grav_gun);
 
 typedef DA(door_tile_xy_t) prefab_door_tile_xy_list_t;
 

@@ -95,7 +95,7 @@ void test_debug_hotkeys_inspect_click_logs_components(void)
     g_ecs_alive[idx] = true;
     ecs_mask[idx] = CMP_POS | CMP_COL | CMP_VEL | CMP_PHYS_BODY | CMP_SPR | CMP_ANIM |
                     CMP_PLAYER | CMP_ITEM | CMP_INV | CMP_VENDOR | CMP_FOLLOW |
-                    CMP_TRIGGER | CMP_BILLBOARD | CMP_LIFTABLE | CMP_DOOR;
+                    CMP_TRIGGER | CMP_BILLBOARD | CMP_GRAV_GUN | CMP_DOOR;
 
     cmp_pos[idx].x = 5.0f;
     cmp_pos[idx].y = 5.0f;
@@ -140,12 +140,12 @@ void test_debug_hotkeys_inspect_click_logs_components(void)
     cmp_billboard[idx].state = BILLBOARD_ACTIVE;
     snprintf(cmp_billboard[idx].text, sizeof(cmp_billboard[idx].text), "hello");
 
-    cmp_liftable[idx].state = LIFTABLE_STATE_ONGROUND;
-    cmp_liftable[idx].carrier = (ecs_entity_t){0};
-    cmp_liftable[idx].height = 0.5f;
-    cmp_liftable[idx].vertical_velocity = 0.0f;
-    cmp_liftable[idx].vx = 0.1f;
-    cmp_liftable[idx].vy = 0.2f;
+    cmp_grav_gun[idx].state = GRAV_GUN_STATE_FREE;
+    cmp_grav_gun[idx].holder = (ecs_entity_t){0};
+    cmp_grav_gun[idx].follow_gain = 2.0f;
+    cmp_grav_gun[idx].max_speed = 50.0f;
+    cmp_grav_gun[idx].hold_vel_x = 0.1f;
+    cmp_grav_gun[idx].hold_vel_y = 0.2f;
 
     cmp_door[idx].prox_radius = 5.0f;
     cmp_door[idx].state = DOOR_OPEN;

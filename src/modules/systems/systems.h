@@ -11,9 +11,10 @@
 // PHASE_SIM_PRE: Intent (pre-sim state setup)
 // PHASE_PHYSICS: Physics integration and motion
 // PHASE_SIM_POST: Post-sim views/derived state
-// PHASE_PRESENT: Present/Render/GC (UI, camera, rendering, asset GC)
+// PHASE_PRESENT: Present (UI, camera, animation prep, non-render updates)
+// PHASE_RENDER: Render + GC (world draw, UI draw, asset GC)
 // PHASE_DEBUG: Debug-only systems
-// PHASE_RENDER_FEED: reserved (currently unused)
+// PHASE_RENDER: render-phase systems
 //
 // Phases shared between ECS and other systems.
 typedef enum {
@@ -22,8 +23,8 @@ typedef enum {
     PHASE_PHYSICS,
     PHASE_SIM_POST,
     PHASE_DEBUG,
-    PHASE_RENDER_FEED,
     PHASE_PRESENT,
+    PHASE_RENDER,
     PHASE_COUNT
 } systems_phase_t;
 

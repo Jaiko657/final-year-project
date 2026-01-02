@@ -23,7 +23,7 @@ cmp_collider_t  cmp_col[ECS_MAX_ENTITIES];
 cmp_trigger_t   cmp_trigger[ECS_MAX_ENTITIES];
 cmp_billboard_t cmp_billboard[ECS_MAX_ENTITIES];
 cmp_phys_body_t cmp_phys_body[ECS_MAX_ENTITIES];
-cmp_liftable_t  cmp_liftable[ECS_MAX_ENTITIES];
+cmp_grav_gun_t  cmp_grav_gun[ECS_MAX_ENTITIES];
 cmp_door_t      cmp_door[ECS_MAX_ENTITIES];
 
 static ecs_entity_t g_player = {0, 0};
@@ -158,9 +158,11 @@ void cmp_add_follow(ecs_entity_t e, ecs_entity_t target, float desired_distance,
     ecs_mask[idx] |= CMP_FOLLOW;
 }
 
-void cmp_add_liftable(ecs_entity_t e)
+void cmp_add_grav_gun(ecs_entity_t e)
 {
-    (void)e;
+    int idx = ent_index_checked(e);
+    if (idx < 0) return;
+    ecs_mask[idx] |= CMP_GRAV_GUN;
 }
 
 void cmp_add_trigger(ecs_entity_t e, float pad, uint32_t target_mask)
@@ -267,9 +269,9 @@ bool prefab_cmp_col_build(const prefab_component_t* comp, const tiled_object_t* 
     return false;
 }
 
-bool prefab_cmp_liftable_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_liftable_t* out_liftable)
+bool prefab_cmp_grav_gun_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_grav_gun_t* out_grav_gun)
 {
-    (void)comp; (void)obj; (void)out_liftable;
+    (void)comp; (void)obj; (void)out_grav_gun;
     return false;
 }
 

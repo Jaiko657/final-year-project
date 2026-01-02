@@ -4,16 +4,13 @@
 #include "modules/ecs/ecs_proximity.h"
 #include "modules/core/input.h"
 #include "modules/systems/systems.h"
+#include "modules/systems/systems_registration.h"
 #include "modules/world/world.h"
 #include "modules/world/world_door.h"
 
 static void sys_doors_tick(float dt);
 
-static void sys_doors_tick_adapt(float dt, const input_t* in)
-{
-    (void)dt; (void)in;
-    sys_doors_tick(dt);
-}
+SYSTEMS_ADAPT_DT(sys_doors_tick_adapt, sys_doors_tick)
 
 static void sys_doors_tick(float dt)
 {
