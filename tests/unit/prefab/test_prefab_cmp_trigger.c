@@ -42,7 +42,7 @@ static tiled_object_t make_obj_with_prop(const char* name, const char* value)
 void test_prefab_cmp_trigger_build_uses_object_proximity_radius_when_pad_missing(void)
 {
     prefab_kv_t props[] = {
-        { .name = "target_mask", .value = "ITEM|COL" },
+        { .name = "target_mask", .value = "PLASTIC|COL" },
     };
     prefab_component_t comp = make_comp("TRIGGER", props, 1);
 
@@ -51,7 +51,6 @@ void test_prefab_cmp_trigger_build_uses_object_proximity_radius_when_pad_missing
     prefab_cmp_trigger_t out = {0};
     TEST_ASSERT_TRUE(prefab_cmp_trigger_build(&comp, &obj, &out));
     TEST_ASSERT_EQUAL_FLOAT(12.5f, out.pad);
-    TEST_ASSERT_TRUE((out.target_mask & CMP_ITEM) != 0);
+    TEST_ASSERT_TRUE((out.target_mask & CMP_PLASTIC) != 0);
     TEST_ASSERT_TRUE((out.target_mask & CMP_COL) != 0);
 }
-

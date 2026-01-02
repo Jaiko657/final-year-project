@@ -135,24 +135,13 @@ void test_cmp_print_phys_sprite_anim_formats(void)
     TEST_ASSERT_EQUAL_INT(LOG_LVL_INFO, s_last_level);
 }
 
-void test_cmp_print_inventory_and_vendor_formats(void)
+void test_cmp_print_storage_format(void)
 {
     cmp_print_player(NULL);
     assert_last_log("PLAYER()");
 
-    cmp_print_item(NULL, 1);
-    TEST_ASSERT_NOT_NULL(strstr(s_last_log, "ITEM(kind=COIN/1)"));
-    TEST_ASSERT_EQUAL_INT(LOG_LVL_INFO, s_last_level);
-
-    cmp_print_item(NULL, 7);
-    TEST_ASSERT_NOT_NULL(strstr(s_last_log, "ITEM(kind=?/7)"));
-    TEST_ASSERT_EQUAL_INT(LOG_LVL_INFO, s_last_level);
-
-    cmp_print_inventory(NULL, 3, true);
-    assert_last_log("INV(coins=3, has_hat=1)");
-
-    cmp_print_vendor(NULL, 2, 5);
-    assert_last_log("VENDOR(sells=HAT/2, price=5)");
+    cmp_print_storage(NULL, 3, 10);
+    assert_last_log("STORAGE(plastic=3, capacity=10)");
 }
 
 void test_cmp_print_follow_collider_and_misc(void)

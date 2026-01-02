@@ -77,6 +77,7 @@ typedef struct {
     float grab_offset_y;
     unsigned int saved_mask_bits;
     bool saved_mask_valid;
+    bool just_dropped;
 } cmp_grav_gun_t;
 
 typedef struct {

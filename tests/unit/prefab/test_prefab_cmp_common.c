@@ -26,18 +26,18 @@ void test_prefab_parse_int_rejects_invalid(void)
 void test_prefab_parse_mask_parses_names_and_sets_out_ok(void)
 {
     bool ok = false;
-    uint32_t mask = prefab_parse_mask("ITEM|COL", &ok);
+    uint32_t mask = prefab_parse_mask("PLASTIC|COL", &ok);
     TEST_ASSERT_TRUE(ok);
-    TEST_ASSERT_TRUE((mask & CMP_ITEM) != 0);
+    TEST_ASSERT_TRUE((mask & CMP_PLASTIC) != 0);
     TEST_ASSERT_TRUE((mask & CMP_COL) != 0);
 }
 
 void test_prefab_parse_mask_accepts_commas_spaces_and_numeric_fallback(void)
 {
     bool ok = false;
-    uint32_t mask = prefab_parse_mask(" ITEM , COL ", &ok);
+    uint32_t mask = prefab_parse_mask(" PLASTIC , COL ", &ok);
     TEST_ASSERT_TRUE(ok);
-    TEST_ASSERT_TRUE((mask & CMP_ITEM) != 0);
+    TEST_ASSERT_TRUE((mask & CMP_PLASTIC) != 0);
     TEST_ASSERT_TRUE((mask & CMP_COL) != 0);
 
     ok = false;
@@ -53,4 +53,3 @@ void test_prefab_parse_mask_invalid_sets_out_ok_false(void)
     TEST_ASSERT_FALSE(ok);
     TEST_ASSERT_EQUAL_UINT32(0u, mask);
 }
-

@@ -81,7 +81,7 @@ void test_ecs_triggers_iterator_includes_collider_size(void)
     ecs_mask[0] = CMP_POS | CMP_TRIGGER | CMP_COL;
     cmp_pos[0] = (cmp_position_t){ 1.0f, 1.0f };
     cmp_col[0] = (cmp_collider_t){ 2.0f, 3.0f };
-    cmp_trigger[0] = (cmp_trigger_t){ 1.5f, CMP_ITEM };
+    cmp_trigger[0] = (cmp_trigger_t){ 1.5f, CMP_PLASTIC };
 
     ecs_trigger_iter_t it = ecs_triggers_begin();
     ecs_trigger_view_t view;

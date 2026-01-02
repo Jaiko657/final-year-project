@@ -129,19 +129,14 @@ void cmp_add_player(ecs_entity_t e)
     (void)e;
 }
 
-void cmp_add_inventory(ecs_entity_t e)
+void cmp_add_plastic(ecs_entity_t e)
 {
     (void)e;
 }
 
-void cmp_add_item(ecs_entity_t e, item_kind_t k)
+void cmp_add_storage(ecs_entity_t e, int capacity)
 {
-    (void)e; (void)k;
-}
-
-void cmp_add_vendor(ecs_entity_t e, item_kind_t sells, int price)
-{
-    (void)e; (void)sells; (void)price;
+    (void)e; (void)capacity;
 }
 
 void cmp_add_follow(ecs_entity_t e, ecs_entity_t target, float desired_distance, float max_speed)
@@ -240,18 +235,6 @@ bool prefab_cmp_anim_build(const prefab_component_t* comp, const tiled_object_t*
 void prefab_cmp_anim_free(prefab_cmp_anim_t* anim)
 {
     (void)anim;
-}
-
-bool prefab_cmp_item_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_item_t* out_item)
-{
-    (void)comp; (void)obj; (void)out_item;
-    return false;
-}
-
-bool prefab_cmp_vendor_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_vendor_t* out_vendor)
-{
-    (void)comp; (void)obj; (void)out_vendor;
-    return false;
 }
 
 bool prefab_cmp_follow_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_follow_t* out_follow)

@@ -8,7 +8,6 @@
 
 #include "modules/common/dynarray.h"
 #include "modules/ecs/ecs.h"
-#include "modules/ecs/ecs_game.h"
 #include "modules/world/door_tiles.h"
 #include "modules/prefab/prefab.h"
 #include "modules/tiled/tiled.h"
@@ -86,12 +85,6 @@ static inline const anim_frame_coord_t* prefab_cmp_anim_frame_coord(const prefab
 
 bool prefab_cmp_anim_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_anim_t* out_anim);
 void prefab_cmp_anim_free(prefab_cmp_anim_t* anim);
-
-typedef struct { item_kind_t kind; } prefab_cmp_item_t;
-bool prefab_cmp_item_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_item_t* out_item);
-
-typedef struct { item_kind_t sells; int price; } prefab_cmp_vendor_t;
-bool prefab_cmp_vendor_build(const prefab_component_t* comp, const tiled_object_t* obj, prefab_cmp_vendor_t* out_vendor);
 
 typedef enum {
     PREFAB_FOLLOW_TARGET_NONE = 0,

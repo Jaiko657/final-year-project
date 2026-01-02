@@ -57,15 +57,6 @@ static const char* door_state_short(int s)
     }
 }
 
-static const char* item_kind_short(int k)
-{
-    switch (k) {
-        case 1: return "COIN";
-        case 2: return "HAT";
-        default: return "?";
-    }
-}
-
 static const char* indent_or_empty(const char* indent)
 {
     return indent ? indent : "";
@@ -175,22 +166,10 @@ void cmp_print_player(const char* indent)
     LOGC(LOGCAT_ECS, LOG_LVL_INFO, "%sPLAYER()", prefix);
 }
 
-void cmp_print_item(const char* indent, int kind)
+void cmp_print_storage(const char* indent, int plastic, int capacity)
 {
     const char* prefix = indent_or_empty(indent);
-    LOGC(LOGCAT_ECS, LOG_LVL_INFO, "%sITEM(kind=%s/%d)", prefix, item_kind_short(kind), kind);
-}
-
-void cmp_print_inventory(const char* indent, int coins, bool has_hat)
-{
-    const char* prefix = indent_or_empty(indent);
-    LOGC(LOGCAT_ECS, LOG_LVL_INFO, "%sINV(coins=%d, has_hat=%d)", prefix, coins, has_hat ? 1 : 0);
-}
-
-void cmp_print_vendor(const char* indent, int sells, int price)
-{
-    const char* prefix = indent_or_empty(indent);
-    LOGC(LOGCAT_ECS, LOG_LVL_INFO, "%sVENDOR(sells=%s/%d, price=%d)", prefix, item_kind_short(sells), sells, price);
+    LOGC(LOGCAT_ECS, LOG_LVL_INFO, "%sSTORAGE(plastic=%d, capacity=%d)", prefix, plastic, capacity);
 }
 
 void cmp_print_follow(const char* indent, const cmp_follow_t* f)
@@ -247,10 +226,11 @@ void cmp_print_grav_gun(const char* indent, const cmp_grav_gun_t* g)
     LOGC(
         LOGCAT_ECS,
         LOG_LVL_INFO,
-        "%sGRAV_GUN(state=%s, holder=%u, follow=%.2f, max=%.1f, break=%.1f, hold_v=(%.1f,%.1f))",
+        "%sGRAV_GUN(state=%s, holder=%u, drop=%d, follow=%.2f, max=%.1f, break=%.1f, hold_v=(%.1f,%.1f))",
         prefix,
         grav_gun_state_short(g->state),
         g->holder.idx,
+        g->just_dropped ? 1 : 0,
         g->follow_gain,
         g->max_speed,
         g->breakoff_distance,

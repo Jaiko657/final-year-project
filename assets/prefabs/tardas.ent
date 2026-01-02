@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prefab name="tardas">
+  <component type="SPR" path="assets/images/props and items x1.png" src="384,192,32,32" ox="16" oy="24"/>
+  <component type="COL" hx="12" hy="8"/>
+  <component type="PHYS_BODY">
+    <property name="type" value="dynamic"/>
+    <property name="mass" value="20.0"/>
+    <property name="friction" value="1.5"/>
+  </component>
+  <component type="GRAV_GUN" pickup_distance="48" pickup_radius="8" max_hold_distance="40" breakoff_distance="60" follow_gain="10" max_speed="220" damping="8"/>
+  <component type="TRIGGER" pad="0" target_mask="PLASTIC"/>
+  <component type="BILLBOARD" text="Drop item" y_offset="-12" linger="0.10" state="active"/>
+  <component type="STORAGE"/>
+</prefab>

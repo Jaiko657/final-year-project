@@ -10,5 +10,5 @@
     <property name="restitution" value="0.2"/>
     <property name="friction" value="1.5"/>
   </component>
-  <component type="GRAV_GUN" pickup_distance="64" pickup_radius="12" max_hold_distance="120" follow_gain="8" max_speed="160" damping="6"/>
+  <component type="GRAV_GUN" pickup_distance="36" pickup_radius="0" max_hold_distance="24" breakoff_distance="40" follow_gain="14" max_speed="360" damping="12"/>
 </prefab>

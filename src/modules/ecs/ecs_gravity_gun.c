@@ -94,6 +94,9 @@ static void grav_gun_set_player_filter(int idx, bool ignore_player)
         unsigned int mask = cmp_phys_body[idx].mask_bits;
         if (mask == 0u) mask = 0xFFFFFFFFu;
         mask &= ~PHYS_CAT_PLAYER;
+        if (ecs_mask[idx] & CMP_PLASTIC) {
+            mask &= ~PHYS_CAT_TARDAS;
+        }
         cmp_phys_body[idx].mask_bits = mask;
     } else if (g->saved_mask_valid) {
         cmp_phys_body[idx].mask_bits = g->saved_mask_bits;
@@ -106,6 +109,7 @@ static void begin_hold(int idx, ecs_entity_t holder, v2f mouse_world)
     cmp_grav_gun_t* g = &cmp_grav_gun[idx];
     g->holder = holder;
     g->state = GRAV_GUN_STATE_HELD;
+    g->just_dropped = false;
     g->grab_offset_x = cmp_pos[idx].x - mouse_world.x;
     g->grab_offset_y = cmp_pos[idx].y - mouse_world.y;
     g->hold_vel_x = 0.0f;
@@ -126,6 +130,7 @@ static void release_hold(int idx)
     cmp_grav_gun_t* g = &cmp_grav_gun[idx];
     g->holder = ecs_null();
     g->state = GRAV_GUN_STATE_FREE;
+    g->just_dropped = true;
     g->hold_vel_x = 0.0f;
     g->hold_vel_y = 0.0f;
     grav_gun_set_player_filter(idx, false);

@@ -332,7 +332,8 @@ void cmp_add_grav_gun(ecs_entity_t e)
         .grab_offset_x      = 0.0f,
         .grab_offset_y      = 0.0f,
         .saved_mask_bits    = 0u,
-        .saved_mask_valid   = false
+        .saved_mask_valid   = false,
+        .just_dropped       = false
     };
     ecs_mask[i] |= CMP_GRAV_GUN;
 }
@@ -351,6 +352,9 @@ void cmp_add_phys_body(ecs_entity_t e, PhysicsType type, float mass)
     };
     if (ecs_mask[i] & CMP_PLAYER) {
         cmp_phys_body[i].category_bits |= PHYS_CAT_PLAYER;
+    }
+    if (ecs_mask[i] & CMP_STORAGE) {
+        cmp_phys_body[i].category_bits |= PHYS_CAT_TARDAS;
     }
     ecs_mask[i] |= CMP_PHYS_BODY;
     try_create_phys_body(i);

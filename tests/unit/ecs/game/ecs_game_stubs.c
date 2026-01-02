@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "modules/asset/asset.h"
 #include "modules/ecs/ecs_internal.h"
 #include "modules/ecs/ecs_proximity.h"
 #include "modules/systems/systems.h"
@@ -42,15 +41,7 @@ float g_world_door_last_time = 0.0f;
 bool g_world_door_last_forward = false;
 int g_ui_toast_calls = 0;
 char g_ui_toast_last[128];
-int g_asset_acquire_calls = 0;
-int g_asset_release_calls = 0;
-char g_asset_last_path[256];
-int g_cmp_add_follow_calls = 0;
-ecs_entity_t g_cmp_add_follow_last_target = {0, 0};
-float g_cmp_add_follow_last_distance = 0.0f;
-float g_cmp_add_follow_last_speed = 0.0f;
-systems_fn g_ecs_sys_pickups = NULL;
-systems_fn g_ecs_sys_interact = NULL;
+systems_fn g_ecs_sys_storage = NULL;
 systems_fn g_ecs_sys_doors_tick = NULL;
 
 static ecs_prox_view_t g_prox_enter_views[8];
@@ -77,15 +68,7 @@ void ecs_game_stub_reset(void)
     g_world_door_last_forward = false;
     g_ui_toast_calls = 0;
     g_ui_toast_last[0] = '\0';
-    g_asset_acquire_calls = 0;
-    g_asset_release_calls = 0;
-    g_asset_last_path[0] = '\0';
-    g_cmp_add_follow_calls = 0;
-    g_cmp_add_follow_last_target = (ecs_entity_t){0, 0};
-    g_cmp_add_follow_last_distance = 0.0f;
-    g_cmp_add_follow_last_speed = 0.0f;
-    g_ecs_sys_pickups = NULL;
-    g_ecs_sys_interact = NULL;
+    g_ecs_sys_storage = NULL;
     g_ecs_sys_doors_tick = NULL;
     memset(g_prox_enter_views, 0, sizeof(g_prox_enter_views));
     memset(g_prox_stay_views, 0, sizeof(g_prox_stay_views));
@@ -175,41 +158,6 @@ void ui_toast(float secs, const char* fmt, ...)
     va_end(args);
 }
 
-tex_handle_t asset_acquire_texture(const char* path)
-{
-    g_asset_acquire_calls++;
-    if (path) {
-        snprintf(g_asset_last_path, sizeof(g_asset_last_path), "%s", path);
-    }
-    return (tex_handle_t){1, 1};
-}
-
-void asset_release_texture(tex_handle_t h)
-{
-    (void)h;
-    g_asset_release_calls++;
-}
-
-bool asset_texture_valid(tex_handle_t h)
-{
-    (void)h;
-    return true;
-}
-
-void cmp_add_follow(ecs_entity_t e, ecs_entity_t target, float desired_distance, float max_speed)
-{
-    int idx = ent_index_checked(e);
-    if (idx < 0) return;
-    g_cmp_add_follow_calls++;
-    g_cmp_add_follow_last_target = target;
-    g_cmp_add_follow_last_distance = desired_distance;
-    g_cmp_add_follow_last_speed = max_speed;
-    cmp_follow[idx].target = target;
-    cmp_follow[idx].desired_distance = desired_distance;
-    cmp_follow[idx].max_speed = max_speed;
-    ecs_mask[idx] |= CMP_FOLLOW;
-}
-
 bool log_would_log(log_level_t lvl)
 {
     (void)lvl;
@@ -260,10 +208,8 @@ void systems_register(systems_phase_t phase, int order, systems_fn fn, const cha
     (void)phase; (void)order; (void)fn; (void)name;
     g_ecs_register_system_calls++;
     if (!name) return;
-    if (strcmp(name, "pickups") == 0) {
-        g_ecs_sys_pickups = fn;
-    } else if (strcmp(name, "interact") == 0) {
-        g_ecs_sys_interact = fn;
+    if (strcmp(name, "storage_deposit") == 0) {
+        g_ecs_sys_storage = fn;
     } else if (strcmp(name, "doors_tick") == 0) {
         g_ecs_sys_doors_tick = fn;
     }

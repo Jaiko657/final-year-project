@@ -34,13 +34,13 @@ void test_proximity_enter_stay_exit(void)
     ecs_mask[0] = CMP_POS | CMP_COL | CMP_TRIGGER | CMP_BILLBOARD;
     cmp_pos[0] = (cmp_position_t){ 0.0f, 0.0f };
     cmp_col[0] = (cmp_collider_t){ 1.0f, 1.0f };
-    cmp_trigger[0] = (cmp_trigger_t){ 0.0f, CMP_ITEM };
+    cmp_trigger[0] = (cmp_trigger_t){ 0.0f, CMP_PLASTIC };
     cmp_billboard[0].state = BILLBOARD_ACTIVE;
     cmp_billboard[0].linger = 2.0f;
     cmp_billboard[0].timer = 0.0f;
 
     ecs_gen[1] = 1;
-    ecs_mask[1] = CMP_POS | CMP_COL | CMP_ITEM;
+    ecs_mask[1] = CMP_POS | CMP_COL | CMP_PLASTIC;
     cmp_pos[1] = (cmp_position_t){ 0.5f, 0.5f };
     cmp_col[1] = (cmp_collider_t){ 1.0f, 1.0f };
 

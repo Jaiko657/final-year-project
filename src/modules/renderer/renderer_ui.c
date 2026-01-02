@@ -21,12 +21,16 @@ void draw_screen_space_ui(const render_view_t* view)
 
     // ===== HUD =====
     {
-        int coins=0; bool hasHat=false;
-        game_get_player_stats(&coins, &hasHat);
-        char hud[64];
-        snprintf(hud, sizeof(hud), "Coins: %d  (%s)", coins, hasHat?"Hat ON":"No hat");
-        DrawText(hud, 10, 10, 20, RAYWHITE);
-        DrawText("Move: Arrows/WASD | Interact: E | Lift/Throw: C", 10, 36, 18, GRAY);
+        int plastic = 0;
+        int capacity = 0;
+        if (game_get_tardas_storage(&plastic, &capacity)) {
+            char storage_hud[64];
+            snprintf(storage_hud, sizeof(storage_hud), "TARDAS Plastic: %d/%d", plastic, capacity);
+            DrawText(storage_hud, 10, 10, 18, RAYWHITE);
+            DrawText("Move: Arrows/WASD | Interact: E | Lift/Throw: C", 10, 32, 18, GRAY);
+        } else {
+            DrawText("Move: Arrows/WASD | Interact: E | Lift/Throw: C", 10, 10, 18, GRAY);
+        }
     }
 
     // ===== floating billboards (from proximity) =====

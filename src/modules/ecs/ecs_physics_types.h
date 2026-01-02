@@ -25,5 +25,6 @@ typedef struct {
 } cmp_phys_body_t;
 
 enum {
-    PHYS_CAT_PLAYER = 1u << 0
+    PHYS_CAT_PLAYER = 1u << 0,
+    PHYS_CAT_TARDAS = 1u << 1
 };

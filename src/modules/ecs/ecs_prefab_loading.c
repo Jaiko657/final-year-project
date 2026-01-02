@@ -3,6 +3,7 @@
 #include "modules/ecs/ecs_internal.h"
 #include "modules/ecs/ecs_render.h"
 #include "modules/ecs/ecs_doors.h"
+#include "modules/ecs/ecs_game.h"
 #include "modules/core/logger.h"
 #include "modules/prefab/prefab_cmp.h"
 
@@ -48,11 +49,8 @@ typedef struct prefab_built_entity_t {
     bool has_anim;
     prefab_cmp_anim_t anim;
 
-    bool has_item;
-    prefab_cmp_item_t item;
-
-    bool has_vendor;
-    prefab_cmp_vendor_t vendor;
+    bool has_plastic;
+    bool has_storage;
 
     bool has_follow;
     prefab_cmp_follow_t follow;
@@ -73,7 +71,6 @@ typedef struct prefab_built_entity_t {
     prefab_cmp_door_t door;
 
     bool has_player;
-    bool has_inv;
 } prefab_built_entity_t;
 
 static void prefab_built_entity_free(prefab_built_entity_t* built)
@@ -101,9 +98,8 @@ static prefab_built_entity_t prefab_build_entity_components(const prefab_t* pref
             case ENUM_SPR:       built.has_spr = prefab_cmp_spr_build(comp, obj, &built.spr); break;
             case ENUM_ANIM:      built.has_anim = prefab_cmp_anim_build(comp, obj, &built.anim); break;
             case ENUM_PLAYER:    built.has_player = true; break;
-            case ENUM_ITEM:      built.has_item = prefab_cmp_item_build(comp, obj, &built.item); break;
-            case ENUM_INV:       built.has_inv = true; break;
-            case ENUM_VENDOR:    built.has_vendor = prefab_cmp_vendor_build(comp, obj, &built.vendor); break;
+            case ENUM_PLASTIC:   built.has_plastic = true; break;
+            case ENUM_STORAGE:   built.has_storage = true; break;
             case ENUM_FOLLOW:    built.has_follow = prefab_cmp_follow_build(comp, obj, &built.follow); break;
             case ENUM_COL:       built.has_col = prefab_cmp_col_build(comp, obj, &built.col); break;
             case ENUM_GRAV_GUN:  built.has_grav_gun = prefab_cmp_grav_gun_build(comp, obj, &built.grav_gun); break;
@@ -177,9 +173,8 @@ static void prefab_add_to_ecs(ecs_entity_t e, const prefab_built_entity_t* built
     }
 
     if (built->has_player) cmp_add_player(e);
-    if (built->has_inv) cmp_add_inventory(e);
-    if (built->has_item) cmp_add_item(e, built->item.kind);
-    if (built->has_vendor) cmp_add_vendor(e, built->vendor.sells, built->vendor.price);
+    if (built->has_plastic) cmp_add_plastic(e);
+    if (built->has_storage) cmp_add_storage(e, 0);
 
     if (built->has_follow) {
         ecs_entity_t target = ecs_null();

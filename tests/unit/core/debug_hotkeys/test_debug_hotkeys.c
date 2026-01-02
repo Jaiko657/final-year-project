@@ -94,7 +94,7 @@ void test_debug_hotkeys_inspect_click_logs_components(void)
     int idx = 1;
     g_ecs_alive[idx] = true;
     ecs_mask[idx] = CMP_POS | CMP_COL | CMP_VEL | CMP_PHYS_BODY | CMP_SPR | CMP_ANIM |
-                    CMP_PLAYER | CMP_ITEM | CMP_INV | CMP_VENDOR | CMP_FOLLOW |
+                    CMP_PLAYER | CMP_FOLLOW | CMP_STORAGE |
                     CMP_TRIGGER | CMP_BILLBOARD | CMP_GRAV_GUN | CMP_DOOR;
 
     cmp_pos[idx].x = 5.0f;
@@ -132,7 +132,7 @@ void test_debug_hotkeys_inspect_click_logs_components(void)
     cmp_follow[idx].vision_range = 20.0f;
 
     cmp_trigger[idx].pad = 1.0f;
-    cmp_trigger[idx].target_mask = CMP_ITEM;
+    cmp_trigger[idx].target_mask = CMP_PLASTIC;
 
     cmp_billboard[idx].y_offset = 1.0f;
     cmp_billboard[idx].linger = 2.0f;
@@ -153,11 +153,8 @@ void test_debug_hotkeys_inspect_click_logs_components(void)
     cmp_door[idx].intent_open = true;
     cmp_door[idx].world_handle = 123u;
 
-    g_game_item_kind = 1;
-    g_game_inv_coins = 3;
-    g_game_inv_hat = true;
-    g_game_vendor_sells = 2;
-    g_game_vendor_price = 7;
+    g_game_storage_plastic = 2;
+    g_game_storage_capacity = 5;
 
     input_t in = {0};
     in.pressed = (1ull << BTN_DEBUG_INSPECT) | (1ull << BTN_MOUSE_L);

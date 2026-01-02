@@ -28,11 +28,8 @@ bool g_engine_reload_world_result = false;
 int g_world_tiles_w = 0;
 int g_world_tiles_h = 0;
 bool g_ecs_alive[ECS_MAX_ENTITIES] = {0};
-int g_game_item_kind = 0;
-int g_game_inv_coins = 0;
-bool g_game_inv_hat = false;
-int g_game_vendor_sells = 0;
-int g_game_vendor_price = 0;
+int g_game_storage_plastic = 0;
+int g_game_storage_capacity = 0;
 
 void debug_hotkeys_stub_reset(void)
 {
@@ -50,11 +47,8 @@ void debug_hotkeys_stub_reset(void)
     g_world_tiles_w = 0;
     g_world_tiles_h = 0;
     memset(g_ecs_alive, 0, sizeof(g_ecs_alive));
-    g_game_item_kind = 0;
-    g_game_inv_coins = 0;
-    g_game_inv_hat = false;
-    g_game_vendor_sells = 0;
-    g_game_vendor_price = 0;
+    g_game_storage_plastic = 0;
+    g_game_storage_capacity = 0;
 }
 
 void asset_reload_all(void)
@@ -125,26 +119,11 @@ camera_view_t camera_get_view(void)
     return view;
 }
 
-bool ecs_game_get_item(ecs_entity_t e, int* out_kind)
+bool ecs_game_get_storage(ecs_entity_t e, int* out_plastic, int* out_capacity)
 {
     (void)e;
-    if (out_kind) *out_kind = g_game_item_kind;
-    return true;
-}
-
-bool ecs_game_get_inventory(ecs_entity_t e, int* out_coins, bool* out_has_hat)
-{
-    (void)e;
-    if (out_coins) *out_coins = g_game_inv_coins;
-    if (out_has_hat) *out_has_hat = g_game_inv_hat;
-    return true;
-}
-
-bool ecs_game_get_vendor(ecs_entity_t e, int* out_sells, int* out_price)
-{
-    (void)e;
-    if (out_sells) *out_sells = g_game_vendor_sells;
-    if (out_price) *out_price = g_game_vendor_price;
+    if (out_plastic) *out_plastic = g_game_storage_plastic;
+    if (out_capacity) *out_capacity = g_game_storage_capacity;
     return true;
 }
 

@@ -18,10 +18,7 @@ extern bool g_engine_reload_world_result;
 extern int g_world_tiles_w;
 extern int g_world_tiles_h;
 extern bool g_ecs_alive[ECS_MAX_ENTITIES];
-extern int g_game_item_kind;
-extern int g_game_inv_coins;
-extern bool g_game_inv_hat;
-extern int g_game_vendor_sells;
-extern int g_game_vendor_price;
+extern int g_game_storage_plastic;
+extern int g_game_storage_capacity;
 
 void debug_hotkeys_stub_reset(void);

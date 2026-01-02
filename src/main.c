@@ -2,7 +2,7 @@
 
 int main(void)
 {
-    if (!engine_init("raylib + ECS: coins, vendor, hat")) {
+    if (!engine_init("raylib + ECS: TARDAS MVP")) {
         return 1;
     }
 

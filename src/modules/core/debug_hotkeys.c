@@ -135,22 +135,11 @@ void sys_debug_binds(const input_t* in)
             if (mask & CMP_PLAYER) {
                 cmp_print_player(cmp_indent);
             }
-            if (mask & CMP_ITEM) {
-                int kind = 0;
-                ecs_game_get_item(h, &kind);
-                cmp_print_item(cmp_indent, kind);
-            }
-            if (mask & CMP_INV) {
-                int coins = 0;
-                bool has_hat = false;
-                ecs_game_get_inventory(h, &coins, &has_hat);
-                cmp_print_inventory(cmp_indent, coins, has_hat);
-            }
-            if (mask & CMP_VENDOR) {
-                int sells = 0;
-                int price = 0;
-                ecs_game_get_vendor(h, &sells, &price);
-                cmp_print_vendor(cmp_indent, sells, price);
+            if (mask & CMP_STORAGE) {
+                int plastic = 0;
+                int capacity = 0;
+                ecs_game_get_storage(h, &plastic, &capacity);
+                cmp_print_storage(cmp_indent, plastic, capacity);
             }
             if (mask & CMP_FOLLOW) {
                 cmp_print_follow(cmp_indent, &cmp_follow[best]);

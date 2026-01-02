@@ -78,8 +78,6 @@ int main(int argc, char **argv)
     nob_da_append(&test_sources, "tests/unit/prefab/test_prefab_cmp_follow.c");
     nob_da_append(&test_sources, "tests/unit/prefab/test_prefab_cmp_trigger.c");
     nob_da_append(&test_sources, "tests/unit/prefab/test_prefab_cmp_billboard.c");
-    nob_da_append(&test_sources, "tests/unit/prefab/test_prefab_cmp_item.c");
-    nob_da_append(&test_sources, "tests/unit/prefab/test_prefab_cmp_vendor.c");
     nob_da_append(&test_sources, "tests/unit/prefab/test_prefab_cmp_grav_gun.c");
     nob_da_append(&test_sources, "tests/unit/prefab/test_prefab_cmp_door.c");
 
@@ -120,8 +118,6 @@ int main(int argc, char **argv)
     nob_da_append(&sources, "src/modules/prefab/components/prefab_cmp_follow.c");
     nob_da_append(&sources, "src/modules/prefab/components/prefab_cmp_trigger.c");
     nob_da_append(&sources, "src/modules/prefab/components/prefab_cmp_billboard.c");
-    nob_da_append(&sources, "src/modules/prefab/components/prefab_cmp_item.c");
-    nob_da_append(&sources, "src/modules/prefab/components/prefab_cmp_vendor.c");
     nob_da_append(&sources, "src/modules/prefab/components/prefab_cmp_grav_gun.c");
     nob_da_append(&sources, "src/modules/prefab/components/prefab_cmp_door.c");
     nob_da_append(&sources, "third_party/xml.c/src/xml.c");
@@ -136,8 +132,6 @@ int main(int argc, char **argv)
     nob_da_append(&sources, "tests/unit/prefab/test_prefab_cmp_follow.c");
     nob_da_append(&sources, "tests/unit/prefab/test_prefab_cmp_trigger.c");
     nob_da_append(&sources, "tests/unit/prefab/test_prefab_cmp_billboard.c");
-    nob_da_append(&sources, "tests/unit/prefab/test_prefab_cmp_item.c");
-    nob_da_append(&sources, "tests/unit/prefab/test_prefab_cmp_vendor.c");
     nob_da_append(&sources, "tests/unit/prefab/test_prefab_cmp_grav_gun.c");
     nob_da_append(&sources, "tests/unit/prefab/test_prefab_cmp_door.c");
     nob_da_append(&sources, runner_path);
