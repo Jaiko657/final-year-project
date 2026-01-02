@@ -108,23 +108,34 @@ static void sys_proximity_build_view_impl(void)
     }
 }
 
+static bool plastic_held_for_storage(int idx)
+{
+    if ((ecs_mask[idx] & (CMP_PLASTIC | CMP_GRAV_GUN)) != (CMP_PLASTIC | CMP_GRAV_GUN)) return false;
+    return cmp_grav_gun[idx].state == GRAV_GUN_STATE_HELD;
+}
+
 static void sys_billboards_impl(float dt)
 {
+    (void)dt;
     for (int i=0;i<ECS_MAX_ENTITIES;++i){
         if (!ecs_alive_idx(i) || !(ecs_mask[i]&CMP_BILLBOARD)) continue;
-        if (cmp_billboard[i].timer > 0) {
-            cmp_billboard[i].timer -= dt;
-            if (cmp_billboard[i].timer < 0) cmp_billboard[i].timer = 0;
-        }
+        cmp_billboard[i].state = BILLBOARD_INACTIVE;
+        cmp_billboard[i].timer = 0.0f;
     }
 
     ecs_prox_iter_t it = ecs_prox_stay_begin();
     ecs_prox_view_t v;
     while (ecs_prox_stay_next(&it, &v)){
-        int a = ent_index_checked(v.trigger_owner);
-        if (a >= 0 && (ecs_mask[a] & CMP_BILLBOARD)){
-            cmp_billboard[a].timer = cmp_billboard[a].linger;
-        }
+        int trigger_idx = ent_index_checked(v.trigger_owner);
+        int matched_idx = ent_index_checked(v.matched_entity);
+        if (trigger_idx < 0 || matched_idx < 0) continue;
+        if ((ecs_mask[trigger_idx] & CMP_BILLBOARD) == 0) continue;
+        if (!plastic_held_for_storage(matched_idx)) continue;
+
+        cmp_billboard[trigger_idx].state = BILLBOARD_ACTIVE;
+        float timer = cmp_billboard[trigger_idx].linger;
+        if (timer <= 0.0f) timer = 1.0f;
+        cmp_billboard[trigger_idx].timer = timer;
     }
 }
 

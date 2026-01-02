@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <prefab name="plastic">
-  <component type="SPR" path="assets/images/plastic.png" src="0,0,23,19" ox="11.5" oy="9.5"/>
+  <component type="SPR" path="assets/images/resources.png" src="32,0,32,32" ox="16" oy="16"/>
   <component type="PLASTIC"/>
   <component type="VEL" x="0" y="0" dir="south"/>
   <component type="COL" hx="8" hy="8"/>

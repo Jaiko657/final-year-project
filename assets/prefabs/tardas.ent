@@ -9,6 +9,6 @@
   </component>
   <component type="GRAV_GUN" pickup_distance="48" pickup_radius="8" max_hold_distance="40" breakoff_distance="60" follow_gain="10" max_speed="220" damping="8"/>
   <component type="TRIGGER" pad="0" target_mask="PLASTIC"/>
-  <component type="BILLBOARD" text="Drop item" y_offset="-12" linger="0.10" state="active"/>
+  <component type="BILLBOARD" text="Store item" y_offset="-12" linger="0.10" state="inactive"/>
   <component type="STORAGE"/>
 </prefab>
